@@ -476,8 +476,8 @@
   }
 
   @media (pointer:coarse){
-    /* 터치에서는 쓸 일이 없어 툴바만 두 줄로 만든다 */
-    #btnFocus, #btnReload{ display:none; }
+    /* 키보드 포커스용이라 터치에서는 쓸 일이 없다 */
+    #btnFocus{ display:none; }
     /* 터치 조작 설명을 맨 위로 */
     .keyrow.touch{
       order:-1;
@@ -577,7 +577,7 @@
     <div class="stage-tools">
       <button class="tool" id="btnFocus">게임 화면에 포커스</button>
       <button class="tool" id="btnFull">전체 화면</button>
-      <button class="tool" id="btnReload">다시 불러오기</button>
+      <button class="tool" id="btnReload">재시작</button>
       <a class="tool" href="color-shift-shooter.html" target="_blank">새 탭에서 열기</a>
     </div>
 
