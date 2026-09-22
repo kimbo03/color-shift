@@ -24,6 +24,8 @@
 const CFG           = window.FIREBASE_CONFIG || {};
 const COLL          = window.RANKING_COLLECTION || 'colorshift_records';
 const CLASS_COLL    = window.RANKING_CLASS_COLLECTION || 'colorshift_classes';
+const IDENT_COLL    = window.RANKING_IDENTITY_COLLECTION || 'colorshift_identities';
+const ID_SALT       = window.RANKING_ID_SALT || 'color-shift';
 const KEY_HAS_CLASS = !!window.RANKING_IDENTITY_INCLUDES_CLASS;
 const USE_ANON      = !!window.RANKING_USE_ANONYMOUS_AUTH;
 
@@ -36,6 +38,8 @@ const SDK_BASE    = 'https://www.gstatic.com/firebasejs/' + SDK_VERSION + '/';
 
 const PROFILE_KEY  = 'css_profile_v1';   // 내 정보 (이 브라우저)
 const LOCAL_DB_KEY = 'css_records_v1';   // 로컬 모드에서 쓰는 기록 저장소
+const LOCAL_ID_KEY = 'css_identity_v1';  // 로컬 모드에서 쓰는 학번·이름 저장소
+const IDENT_KEY    = 'css_ident_saved';  // 학번·이름을 이미 보냈는지 표시
 const CACHE_KEY    = 'css_board_v1';     // 순위표 캐시
 const MAX_STAGE    = 8;
 
@@ -62,14 +66,40 @@ function saveProfile(p) {
   try { localStorage.setItem(PROFILE_KEY, JSON.stringify(p)); } catch (e) {}
 }
 
-/* 같은 사람 판별용 문서 ID — 학번 + 이름 (설정에 따라 반 포함) */
-function playerIdOf(p) {
-  const clean = s => String(s).trim().replace(/\s+/g, '').replace(/[\/\\.#$\[\]]/g, '_');
+/* 같은 사람 판별용 문서 ID.
+   학번과 이름을 그대로 쓰면 문서 목록만 봐도 누군지 드러나기 때문에
+   해시를 내서 쓴다. 같은 사람은 항상 같은 값이 나오고, 값만 보고는 누군지 알 수 없다.
+   (소금값은 코드에 있으니 비밀은 아니다 — 목록을 훑어 이름을 줍는 것을 막는 용도다) */
+async function makePlayerId(p) {
+  const clean = s => String(s).trim().replace(/\s+/g, '');
   const parts = KEY_HAS_CLASS ? [p.klass, p.studentId, p.name] : [p.studentId, p.name];
-  return parts.map(clean).join('-');
+  const data  = new TextEncoder().encode(ID_SALT + '|' + parts.map(clean).join('|'));
+  const hash  = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 24);
 }
 
 let profile = loadProfile();
+
+/* 예전에 저장된 정보에는 pid 가 없을 수 있어 한 번 만들어 둔다 */
+async function ensurePid() {
+  if (!profile) return null;
+  if (!profile.pid) {
+    profile.pid = await makePlayerId(profile);
+    saveProfile(profile);
+  }
+  return profile.pid;
+}
+
+/* 학번·이름은 순위표에 쓰이지 않으므로 읽기가 막힌 별도 문서에만 넣는다.
+   한 번 써 두면 되니 매 판 쓰지 않는다. */
+async function ensureIdentity() {
+  if (!profile || !profile.pid || !backend || !backend.saveIdentity) return;
+  try {
+    if (localStorage.getItem(IDENT_KEY) === profile.pid) return;
+  } catch (e) {}
+  await backend.saveIdentity(profile);
+  try { localStorage.setItem(IDENT_KEY, profile.pid); } catch (e) {}
+}
 
 /* ------------------------------------------------------------
    2. 저장소 — Firebase 가 설정되어 있으면 Firestore, 아니면 로컬
@@ -99,7 +129,6 @@ const localBackend = {
     db[rec.id] = {
       id: rec.id,
       nickname: rec.nickname, klass: rec.klass,
-      studentId: rec.studentId, name: rec.name,
       score:   better ? rec.score   : prev.score,
       stage:   better ? rec.stage   : prev.stage,
       rankKey: better ? rec.rankKey : prev.rankKey,
@@ -108,6 +137,14 @@ const localBackend = {
     };
     writeLocal(db);
     return { saved: better, best: db[rec.id] };
+  },
+
+  async saveIdentity(p) {
+    try {
+      const ids = JSON.parse(localStorage.getItem(LOCAL_ID_KEY) || '{}') || {};
+      ids[p.pid] = { studentId: p.studentId, name: p.name, updatedAt: Date.now() };
+      localStorage.setItem(LOCAL_ID_KEY, JSON.stringify(ids));
+    } catch (e) {}
   },
 
   async loadBoard(prof) {
@@ -126,9 +163,8 @@ const localBackend = {
     const classes = Array.from(cmap.values()).sort((a, b) => b.total - a.total);
 
     let me = null, myRank = 0;
-    if (prof) {
-      const id = playerIdOf(prof);
-      const i  = all.findIndex(r => r.id === id);
+    if (prof && prof.pid) {
+      const i = all.findIndex(r => r.id === prof.pid);
       if (i >= 0) { me = all[i]; myRank = all.filter(r => r.rankKey > me.rankKey).length + 1; }
     }
     return { players: all.slice(0, SOLO_LIMIT), classes: classes, me: me,
@@ -180,7 +216,6 @@ async function makeFirebaseBackend() {
         // --- 쓰기 ---
         const next = {
           nickname: rec.nickname, klass: rec.klass,
-          studentId: rec.studentId, name: rec.name,
           score: score, stage: stage, rankKey: rankKey,
           plays: (prev && prev.plays ? prev.plays : 0) + 1,
           updatedAt: fs.serverTimestamp()
@@ -211,6 +246,17 @@ async function makeFirebaseBackend() {
       });
     },
 
+    /* 학번·이름은 읽기가 막힌 별도 컬렉션에 넣는다.
+       규칙에서 읽기를 막아 두었기 때문에 여기서도 읽지 않고 쓰기만 한다.
+       상품을 줄 때는 Firebase 콘솔에서 같은 문서 ID 로 찾으면 된다. */
+    async saveIdentity(p) {
+      await fs.setDoc(fs.doc(db, IDENT_COLL, p.pid), {
+        studentId: p.studentId,
+        name:      p.name,
+        updatedAt: fs.serverTimestamp()
+      }, { merge: true });
+    },
+
     /* 상위 N명 + 반 문서 전부. 내가 상위 N명 밖이면 내 문서 하나와
        나보다 점수가 높은 사람 수(집계 쿼리)만 더 읽는다. */
     async loadBoard(prof) {
@@ -226,8 +272,8 @@ async function makeFirebaseBackend() {
       const totalPlayers = classes.reduce((s, c) => s + Number(c.count || 0), 0);
 
       let me = null, myRank = 0;
-      if (prof) {
-        const id = playerIdOf(prof);
+      if (prof && prof.pid) {
+        const id = prof.pid;
         const i  = players.findIndex(p => p.id === id);
         if (i >= 0) {
           me = players[i];
@@ -348,9 +394,11 @@ form.addEventListener('submit', async e => {
   if (r.err) { regErr.textContent = r.err; return; }
 
   profile = r.profile;
+  profile.pid = await makePlayerId(profile);
   saveProfile(profile);
   closeModal();
   renderMine();
+  try { await ensureIdentity(); } catch (e) {}   // 학번·이름은 여기서 한 번만 보낸다
 
   if (pendingResult) {
     const p = pendingResult;
@@ -381,12 +429,13 @@ async function submitResult(score, stage) {
   if (submitting) return;
   submitting = true;
   try {
+    await ensurePid();
+    try { await ensureIdentity(); } catch (e) {}   // 등록 때 못 보냈으면 여기서 한 번
+
     const rec = {
-      id: playerIdOf(profile),
-      nickname:  profile.nickname,
-      klass:     profile.klass,
-      studentId: profile.studentId,
-      name:      profile.name,
+      id: profile.pid,
+      nickname: profile.nickname,
+      klass:    profile.klass,
       score:   score,
       stage:   stage,
       rankKey: rankKeyOf(score, stage)
@@ -485,7 +534,7 @@ function gapRow(cols) {
 }
 
 function renderSolo() {
-  const myId  = profile ? playerIdOf(profile) : null;
+  const myId  = profile ? profile.pid : null;
   const list  = board.players.slice(0, SOLO_LIMIT);
   const ranks = rankNumbers(list, r => Number(r.rankKey || 0));
 
@@ -630,6 +679,7 @@ let sectionVisible = false;
 
 (async function boot() {
   selectTab('solo');
+  await ensurePid();                   // 내 줄을 찾으려면 문서 ID 가 먼저 있어야 한다
 
   const cached = readCache();          // 3분 안에 본 적 있으면 그대로 그린다
   if (cached) {

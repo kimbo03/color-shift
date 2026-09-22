@@ -25,6 +25,16 @@ window.RANKING_COLLECTION = "colorshift_records";
 /* 반별 합계를 모아 두는 컬렉션 — 반별 순위를 반 개수만큼만 읽으면 되게 해 준다 */
 window.RANKING_CLASS_COLLECTION = "colorshift_classes";
 
+/* 학번·이름만 따로 담는 컬렉션.
+   보안 규칙에서 읽기를 막아 두기 때문에 Firebase 콘솔에서만 볼 수 있다.
+   순위표에 쓰이는 기록에는 학번·이름이 들어가지 않는다. */
+window.RANKING_IDENTITY_COLLECTION = "colorshift_identities";
+
+/* 문서 ID 를 만들 때 섞는 값. 학번·이름을 그대로 ID 로 쓰지 않기 위한 것이다.
+   코드에 들어 있으니 비밀은 아니고, 문서 목록을 훑어 이름을 줍는 것을 막는 용도다.
+   한 번 정하면 바꾸지 마세요 — 바꾸면 기존 기록과 이어지지 않습니다. */
+window.RANKING_ID_SALT = "color-shift-shooter-2026";
+
 /* 순위표에 보여줄 개수. 그 아래에 있으면 ⋯ 뒤에 내 줄이 따로 붙는다.
    읽기 비용과 직결되니 참가자가 많아지면 줄이세요. */
 window.RANKING_SOLO_LIMIT  = 30;   // 개인 순위 (명)
