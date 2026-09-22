@@ -1,9 +1,9 @@
 /* ============================================================
    COLOR SHIFT SHOOTER — 랭킹 시스템
    ------------------------------------------------------------
-   · 첫 방문 시 닉네임 · 반 · 학번 · 이름을 입력받는다
+   · 첫 방문 시 닉네임 · 학년 · 반 · 학번 · 이름을 입력받는다 (게스트로 건너뛸 수 있다)
    · 게임(iframe)이 끝나면 점수와 도달 스테이지를 받아 최고 기록만 남긴다
-   · 개인 순위(상위 30명) / 반별 순위(상위 10반)를 보여준다
+   · 개인 순위(상위 30명) / 반별 순위(상위 10개 반, 학년+반 단위)를 보여준다
      내 기록이 그 아래면 ⋯ 뒤에 내 줄을 따로 붙인다
 
    읽기 비용을 아끼려고 이렇게 했다 (Firebase 무료 한도: 하루 5만 읽기)
@@ -29,6 +29,8 @@ const ID_SALT       = window.RANKING_ID_SALT || 'color-shift';
 const KEY_HAS_CLASS = !!window.RANKING_IDENTITY_INCLUDES_CLASS;
 const USE_ANON      = !!window.RANKING_USE_ANONYMOUS_AUTH;
 
+const MAX_GRADE   = window.RANKING_MAX_GRADE   || 3;    // 학년 범위 (1 ~ 이 값)
+const MAX_CLASS   = window.RANKING_MAX_CLASS   || 20;   // 반 범위 (1 ~ 이 값)
 const SOLO_LIMIT  = window.RANKING_SOLO_LIMIT  || 30;   // 개인 순위에 보여줄 인원
 const CLASS_LIMIT = window.RANKING_CLASS_LIMIT || 10;   // 반별 순위에 보여줄 반 수
 const CACHE_MS    = 3 * 60 * 1000;                      // 순위표 캐시 시간
@@ -40,8 +42,14 @@ const PROFILE_KEY  = 'css_profile_v1';   // 내 정보 (이 브라우저)
 const LOCAL_DB_KEY = 'css_records_v1';   // 로컬 모드에서 쓰는 기록 저장소
 const LOCAL_ID_KEY = 'css_identity_v1';  // 로컬 모드에서 쓰는 학번·이름 저장소
 const IDENT_KEY    = 'css_ident_saved';  // 학번·이름을 이미 보냈는지 표시
+const GUEST_KEY    = 'css_guest_v1';     // 게스트로 진행하기를 골랐는지
 const CACHE_KEY    = 'css_board_v1';     // 순위표 캐시
 const MAX_STAGE    = 8;
+
+/* 반은 학년까지 묶어야 1학년 3반과 2학년 3반이 섞이지 않는다 */
+function classIdOf(p)    { return Number(p.grade) + '-' + Number(p.klass); }
+function classLabel(c)   { return Number(c.grade) + '학년 ' + Number(c.klass) + '반'; }
+function sameClass(a, b) { return Number(a.grade) === Number(b.grade) && Number(a.klass) === Number(b.klass); }
 
 /* 점수 우선, 같으면 스테이지 — 한 숫자로 합쳐 두면 정렬 색인 하나로 끝난다 */
 function rankKeyOf(score, stage) { return score * 1000 + stage; }
@@ -59,7 +67,7 @@ function loadProfile() {
     const raw = localStorage.getItem(PROFILE_KEY);
     if (!raw) return null;
     const p = JSON.parse(raw);
-    return (p && p.nickname && p.studentId && p.name) ? p : null;
+    return (p && p.nickname && p.grade && p.klass && p.studentId && p.name) ? p : null;
   } catch (e) { return null; }
 }
 function saveProfile(p) {
@@ -128,7 +136,7 @@ const localBackend = {
     const better = isBetter(rec, prev);
     db[rec.id] = {
       id: rec.id,
-      nickname: rec.nickname, klass: rec.klass,
+      nickname: rec.nickname, grade: rec.grade, klass: rec.klass,
       score:   better ? rec.score   : prev.score,
       stage:   better ? rec.stage   : prev.stage,
       rankKey: better ? rec.rankKey : prev.rankKey,
@@ -153,9 +161,9 @@ const localBackend = {
 
     const cmap = new Map();
     for (const r of all) {
-      const k = Number(r.klass);
-      if (!k) continue;
-      if (!cmap.has(k)) cmap.set(k, { klass: k, total: 0, count: 0 });
+      if (!r.grade || !r.klass) continue;
+      const k = classIdOf(r);
+      if (!cmap.has(k)) cmap.set(k, { grade: Number(r.grade), klass: Number(r.klass), total: 0, count: 0 });
       const c = cmap.get(k);
       c.total += Number(r.score || 0);
       c.count += 1;
@@ -202,20 +210,20 @@ async function makeFirebaseBackend() {
         const stage   = better ? rec.stage   : prev.stage;
         const rankKey = better ? rec.rankKey : prev.rankKey;
 
-        const movedClass = !!(prev && Number(prev.klass) !== Number(rec.klass));
+        const movedClass = !!(prev && !sameClass(prev, rec));
         const delta      = (prev && !movedClass) ? score - Number(prev.score || 0) : score;
         const addMember  = (prev && !movedClass) ? 0 : 1;
         const touchNew   = (delta !== 0 || addMember !== 0);
 
         // --- 읽기 (필요할 때만) ---
-        const newRef = touchNew  ? fs.doc(db, CLASS_COLL, String(rec.klass))  : null;
-        const oldRef = movedClass ? fs.doc(db, CLASS_COLL, String(prev.klass)) : null;
+        const newRef = touchNew  ? fs.doc(db, CLASS_COLL, classIdOf(rec))  : null;
+        const oldRef = movedClass ? fs.doc(db, CLASS_COLL, classIdOf(prev)) : null;
         const newCls = newRef ? await tx.get(newRef) : null;
         const oldCls = oldRef ? await tx.get(oldRef) : null;
 
         // --- 쓰기 ---
         const next = {
-          nickname: rec.nickname, klass: rec.klass,
+          nickname: rec.nickname, grade: rec.grade, klass: rec.klass,
           score: score, stage: stage, rankKey: rankKey,
           plays: (prev && prev.plays ? prev.plays : 0) + 1,
           updatedAt: fs.serverTimestamp()
@@ -226,7 +234,7 @@ async function makeFirebaseBackend() {
         if (oldRef) {   // 반을 옮겼다면 예전 반에서 빼준다
           const o = oldCls.exists() ? oldCls.data() : { total: 0, count: 0 };
           tx.set(oldRef, {
-            klass: Number(prev.klass),
+            grade: Number(prev.grade), klass: Number(prev.klass),
             total: Math.max(0, Number(o.total || 0) - Number(prev.score || 0)),
             count: Math.max(0, Number(o.count || 0) - 1),
             updatedAt: fs.serverTimestamp()
@@ -235,7 +243,7 @@ async function makeFirebaseBackend() {
         if (newRef) {
           const n = newCls.exists() ? newCls.data() : { total: 0, count: 0 };
           tx.set(newRef, {
-            klass: Number(rec.klass),
+            grade: Number(rec.grade), klass: Number(rec.klass),
             total: Math.max(0, Number(n.total || 0) + delta),
             count: Math.max(0, Number(n.count || 0) + addMember),
             updatedAt: fs.serverTimestamp()
@@ -262,7 +270,7 @@ async function makeFirebaseBackend() {
     async loadBoard(prof) {
       const [topSnap, clsSnap] = await Promise.all([
         fs.getDocs(fs.query(recs(), fs.orderBy('rankKey', 'desc'), fs.limit(SOLO_LIMIT))),
-        fs.getDocs(fs.query(clss(), fs.orderBy('total', 'desc'), fs.limit(60)))
+        fs.getDocs(fs.query(clss(), fs.orderBy('total', 'desc'), fs.limit(MAX_GRADE * MAX_CLASS)))
       ]);
 
       const players = topSnap.docs.map(d => Object.assign({ id: d.id }, d.data()));
@@ -317,6 +325,7 @@ const $ = id => document.getElementById(id);
 const modal    = $('regBackdrop');
 const form     = $('regForm');
 const fNick    = $('fNick');
+const fGrade   = $('fGrade');
 const fClass   = $('fClass');
 const fNo      = $('fNo');
 const fName    = $('fName');
@@ -346,6 +355,16 @@ function esc(s) {
    4. 등록 화면
    ------------------------------------------------------------ */
 let pendingResult = null;    // 정보를 입력하기 전에 끝난 판의 기록
+let guest = false;           // 게스트로 진행하기를 고른 상태
+try { guest = localStorage.getItem(GUEST_KEY) === '1'; } catch (e) {}
+
+function setGuest(on) {
+  guest = on;
+  try {
+    if (on) localStorage.setItem(GUEST_KEY, '1');
+    else    localStorage.removeItem(GUEST_KEY);
+  } catch (e) {}
+}
 
 function openModal(edit) {
   regTitle.textContent = edit ? '내 정보 수정' : '플레이어 정보 입력';
@@ -358,6 +377,7 @@ function openModal(edit) {
   regNote.style.display = edit ? 'block' : 'none';
   if (profile) {
     fNick.value  = profile.nickname;
+    fGrade.value = profile.grade;
     fClass.value = profile.klass;
     fNo.value    = profile.studentId;
     fName.value  = profile.name;
@@ -375,17 +395,19 @@ function closeModal() {
 
 function readForm() {
   const nickname  = fNick.value.trim();
+  const grade     = parseInt(fGrade.value, 10);
   const klass     = parseInt(fClass.value, 10);
   const studentId = fNo.value.trim();
   const name      = fName.value.trim();
 
   if (nickname.length < 1 || nickname.length > 12) return { err: '닉네임은 1~12자로 입력해 주세요.' };
-  if (!(klass >= 1 && klass <= 20))                 return { err: '반은 1~20 사이의 숫자로 입력해 주세요.' };
-  if (!/^[0-9]{1,6}$/.test(studentId))              return { err: '학번은 숫자 1~6자리로 입력해 주세요.' };
-  if (name.length < 1 || name.length > 10)          return { err: '이름은 1~10자로 입력해 주세요.' };
-  if (!fAgree.checked)                              return { err: '안내 사항을 확인했는지 체크해 주세요.' };
+  if (!(grade >= 1 && grade <= MAX_GRADE))         return { err: '학년은 1~' + MAX_GRADE + ' 사이의 숫자로 입력해 주세요.' };
+  if (!(klass >= 1 && klass <= MAX_CLASS))         return { err: '반은 1~' + MAX_CLASS + ' 사이의 숫자로 입력해 주세요.' };
+  if (!/^[0-9]{1,6}$/.test(studentId))             return { err: '학번은 숫자로만 입력해 주세요. (예: 10000)' };
+  if (name.length < 1 || name.length > 10)         return { err: '이름은 1~10자로 입력해 주세요.' };
+  if (!fAgree.checked)                             return { err: '안내 사항을 확인했는지 체크해 주세요.' };
 
-  return { profile: { nickname: nickname, klass: klass, studentId: studentId, name: name } };
+  return { profile: { nickname: nickname, grade: grade, klass: klass, studentId: studentId, name: name } };
 }
 
 form.addEventListener('submit', async e => {
@@ -394,6 +416,7 @@ form.addEventListener('submit', async e => {
   if (r.err) { regErr.textContent = r.err; return; }
 
   profile = r.profile;
+  setGuest(false);
   profile.pid = await makePlayerId(profile);
   saveProfile(profile);
   closeModal();
@@ -409,10 +432,12 @@ form.addEventListener('submit', async e => {
   }
 });
 
-$('regLater').addEventListener('click', e => {
-  e.preventDefault();
+$('regGuest').addEventListener('click', () => {
+  setGuest(true);
+  pendingResult = null;
   closeModal();
   renderMine();
+  toast('게스트로 진행합니다 — 점수가 순위표에 남지 않습니다.');
 });
 
 /* ------------------------------------------------------------
@@ -421,8 +446,12 @@ $('regLater').addEventListener('click', e => {
 let submitting = false;
 
 async function submitResult(score, stage) {
-  if (!profile) {                 // 정보 없이 끝난 판 — 입력받은 뒤 이어서 저장한다
-    pendingResult = { score: score, stage: stage };
+  if (!profile) {
+    if (guest) {                  // 게스트 — 기록하지 않고 안내만 한다
+      toast('게스트 모드 — ' + score.toLocaleString() + '점은 순위표에 저장되지 않았습니다. 정보를 입력하면 다음 판부터 기록됩니다.');
+      return;
+    }
+    pendingResult = { score: score, stage: stage };   // 입력받은 뒤 이어서 저장한다
     openModal(false);
     return;
   }
@@ -435,6 +464,7 @@ async function submitResult(score, stage) {
     const rec = {
       id: profile.pid,
       nickname: profile.nickname,
+      grade:    profile.grade,
       klass:    profile.klass,
       score:   score,
       stage:   stage,
@@ -447,7 +477,7 @@ async function submitResult(score, stage) {
       : '기록했습니다 — 최고 기록은 ' + Number(res.best.score).toLocaleString() + '점 · STAGE ' + stageLabel(res.best.stage));
 
     // 내 기록 카드만 곧바로 고치고, 순위표는 화면에 보일 때 다시 읽는다 (읽기 절약)
-    if (!board.me) board.me = { id: rec.id, nickname: rec.nickname, klass: rec.klass, plays: 0 };
+    if (!board.me) board.me = { id: rec.id, nickname: rec.nickname, grade: rec.grade, klass: rec.klass, plays: 0 };
     board.me.score   = res.best.score;
     board.me.stage   = res.best.stage;
     board.me.rankKey = rankKeyOf(res.best.score, res.best.stage);
@@ -562,20 +592,20 @@ function soloRow(rank, r, me) {
 }
 
 function renderClass() {
-  const myClass = profile ? Number(profile.klass) : 0;
-  const all     = board.classes;
-  const list    = all.slice(0, CLASS_LIMIT);
-  const ranks   = rankNumbers(all, c => Number(c.total || 0));
+  const all   = board.classes;
+  const list  = all.slice(0, CLASS_LIMIT);
+  const ranks = rankNumbers(all, c => Number(c.total || 0));
+  const mine  = c => !!(profile && sameClass(c, profile));
 
   if (!list.length) {
     classBody.innerHTML = '<tr><td colspan="4" class="empty">아직 기록이 없습니다.</td></tr>';
     return;
   }
 
-  let html = list.map((c, i) => classRow(ranks[i], c, Number(c.klass) === myClass)).join('');
+  let html = list.map((c, i) => classRow(ranks[i], c, mine(c))).join('');
 
-  const mineIdx = all.findIndex(c => Number(c.klass) === myClass);
-  if (myClass && mineIdx >= CLASS_LIMIT) {
+  const mineIdx = all.findIndex(mine);
+  if (mineIdx >= CLASS_LIMIT) {
     html += gapRow(4) + classRow(ranks[mineIdx], all[mineIdx], true);
   }
   classBody.innerHTML = html;
@@ -583,7 +613,7 @@ function renderClass() {
 function classRow(rank, c, me) {
   return '<tr class="' + (me ? 'me' : '') + '">'
     + '<td class="rk ' + medal(rank) + '">' + rank + '</td>'
-    + '<td class="nick">' + Number(c.klass) + '반' + (me ? '<span class="tag">우리 반</span>' : '') + '</td>'
+    + '<td class="nick">' + classLabel(c) + (me ? '<span class="tag">우리 반</span>' : '') + '</td>'
     + '<td class="num">' + num(c.total) + '</td>'
     + '<td class="num">' + Number(c.count || 0) + '명</td>'
     + '</tr>';
@@ -597,7 +627,10 @@ function renderMine() {
   if (!profile) {
     mineEl.innerHTML =
       '<div class="mine-empty">'
-      + '<p>아직 플레이어 정보를 입력하지 않았습니다. 정보를 입력해야 기록이 순위표에 올라갑니다.</p>'
+      + '<p>' + (guest
+          ? '<b>게스트로 플레이 중입니다 — 점수가 순위표에 남지 않습니다.</b><br>정보를 입력하면 그때부터 기록됩니다.'
+          : '아직 플레이어 정보를 입력하지 않았습니다. 정보를 입력해야 기록이 순위표에 올라갑니다.')
+      + '</p>'
       + '<button type="button" class="tool" id="btnRegNow">정보 입력하기</button>'
       + '</div>';
     $('btnRegNow').addEventListener('click', () => openModal(false));
@@ -607,7 +640,7 @@ function renderMine() {
   mineEl.innerHTML =
     '<div class="mine-head">'
     + '<span class="mine-nick">' + esc(profile.nickname) + '</span>'
-    + '<span class="mine-meta">' + Number(profile.klass) + '반 · 순위표에는 닉네임만 공개됩니다</span>'
+    + '<span class="mine-meta">' + classLabel(profile) + ' · 순위표에는 닉네임만 공개됩니다</span>'
     + '</div>'
     + '<div class="mine-stats">'
     + stat('내 순위',       me && board.myRank ? board.myRank + '위' : '—')
@@ -703,7 +736,7 @@ let sectionVisible = false;
   // 창 높이를 알 수 없는 환경(숨겨진 창 등)에서는 관찰이 동작하지 않으니 한 번은 읽어 둔다
   setTimeout(() => { if (!board.at && !window.innerHeight) refresh(false); }, 1200);
 
-  if (!profile) openModal(false);      // 첫 방문
+  if (!profile && !guest) openModal(false);   // 첫 방문 (게스트를 고른 적 있으면 띄우지 않는다)
 })();
 
 })();

@@ -35,6 +35,11 @@ window.RANKING_IDENTITY_COLLECTION = "colorshift_identities";
    한 번 정하면 바꾸지 마세요 — 바꾸면 기존 기록과 이어지지 않습니다. */
 window.RANKING_ID_SALT = "color-shift-shooter-2026";
 
+/* 입력받는 학년·반 범위 (1부터 이 값까지).
+   학년을 바꾸면 Firestore 보안 규칙의 grade 범위도 같이 바꿔야 합니다. */
+window.RANKING_MAX_GRADE = 3;
+window.RANKING_MAX_CLASS = 20;
+
 /* 순위표에 보여줄 개수. 그 아래에 있으면 ⋯ 뒤에 내 줄이 따로 붙는다.
    읽기 비용과 직결되니 참가자가 많아지면 줄이세요. */
 window.RANKING_SOLO_LIMIT  = 30;   // 개인 순위 (명)

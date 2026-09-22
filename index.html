@@ -382,10 +382,16 @@
   .agree input{ width:17px; height:17px; accent-color:var(--red); cursor:pointer; }
   .err{ margin-top:12px; min-height:19px; color:var(--red-soft); font-size:13px; font-weight:700; }
   .edit-note{ margin-top:2px; color:var(--dim); font-size:12.5px; }
-  .modal-actions{ margin-top:16px; display:flex; align-items:center; gap:16px; }
-  .btn.sm{ padding:12px 24px; font-size:14px; }
-  .later{ color:var(--dim); font-size:13px; text-decoration:none; }
-  .later:hover{ color:var(--muted); text-decoration:underline; }
+  .modal-actions{ margin-top:16px; display:flex; align-items:stretch; gap:10px; }
+  .modal-actions .btn{ flex:1; text-align:center; }
+  .btn.sm{ padding:13px 20px; font-size:14.5px; }
+  .guest-note{
+    margin-top:12px; padding:11px 14px;
+    background:rgba(255,255,255,.04);
+    border:1px solid var(--line); border-radius:9px;
+    color:var(--muted); font-size:12.5px; line-height:1.6;
+  }
+  .guest-note b{ color:#c7d2f5; font-weight:700; }
 
   /* ---------- 알림 ---------- */
   #rankToast{
@@ -503,7 +509,7 @@
       게임이 끝나면 점수와 도달 스테이지가 자동으로 기록됩니다.
       여러 번 플레이해도 <b>가장 좋은 기록 하나</b>만 남습니다 — 점수가 높은 판이 우선이고,
       점수가 같으면 더 멀리 간 판이 남습니다.
-      개인은 <b>상위 30명</b>, 반은 <b>상위 10반</b>까지 보여주고, 그 아래면 내 줄을 따로 붙여 줍니다.
+      개인은 <b>상위 30명</b>, 반은 <b>상위 10개 반</b>까지 보여주고, 그 아래면 내 줄을 따로 붙여 줍니다.
     </p>
 
     <div class="rank-mine" id="rankMine"></div>
@@ -738,14 +744,18 @@ document.querySelectorAll('a[href="#play"]').forEach(a => {
         <input id="fNick" type="text" maxlength="12" autocomplete="off" placeholder="순위표에 표시될 이름">
       </label>
       <label class="field sm">
+        <span>학년</span>
+        <input id="fGrade" type="number" min="1" max="3" inputmode="numeric" placeholder="1">
+      </label>
+      <label class="field sm">
         <span>반</span>
-        <input id="fClass" type="number" min="1" max="20" inputmode="numeric" placeholder="예: 3">
+        <input id="fClass" type="number" min="1" max="20" inputmode="numeric" placeholder="3">
       </label>
       <label class="field sm">
         <span>학번</span>
-        <input id="fNo" type="text" maxlength="6" inputmode="numeric" autocomplete="off" placeholder="예: 12">
+        <input id="fNo" type="text" maxlength="6" inputmode="numeric" autocomplete="off" placeholder="10000">
       </label>
-      <label class="field">
+      <label class="field sm">
         <span>이름</span>
         <input id="fName" type="text" maxlength="10" autocomplete="off" placeholder="본인 이름">
       </label>
@@ -756,7 +766,7 @@ document.querySelectorAll('a[href="#play"]').forEach(a => {
       <ul>
         <li>순위표에는 <b>닉네임만</b> 공개됩니다.</li>
         <li><b>학번과 이름은 공개되지 않으며</b>, 나중에 개발자가 상품을 줄 때 본인 확인용으로만 사용합니다.</li>
-        <li>반은 반별 순위를 집계하는 데에만 사용합니다.</li>
+        <li>학년과 반은 반별 순위를 집계하는 데에만 사용합니다.</li>
       </ul>
     </div>
 
@@ -770,8 +780,12 @@ document.querySelectorAll('a[href="#play"]').forEach(a => {
 
     <div class="modal-actions">
       <button type="submit" class="btn primary sm" id="regOk">저장하고 시작</button>
-      <a href="#" class="later" id="regLater">나중에 입력</a>
+      <button type="button" class="btn ghost sm" id="regGuest">게스트로 진행</button>
     </div>
+    <p class="guest-note">
+      <b>게스트로 진행하면 점수가 순위표에 남지 않습니다.</b>
+      나중에 순위표의 <b>정보 입력하기</b>를 누르면 그때부터 기록됩니다.
+    </p>
   </form>
 </div>
 
