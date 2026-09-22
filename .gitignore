@@ -1,0 +1,13 @@
+# 개발 과정 문서 — 저장소에는 올리지 않는다
+작업정리.md
+FIREBASE_설정안내.md
+COLOR_SHIFT_랭킹시스템_아이디어.md
+GitHub_배포_요청.md
+
+# 로컬 미리보기 서버 설정 (개발 편의용)
+.claude/
+
+# OS
+Thumbs.db
+desktop.ini
+.DS_Store

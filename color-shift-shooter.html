@@ -1,0 +1,1465 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>색깔 전환 슈팅 — Color Shift Shooter</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body {
+    width:100%; height:100%;
+    background:#05060f;
+    overflow:hidden;
+    font-family:"Pretendard","Malgun Gothic","Apple SD Gothic Neo",system-ui,sans-serif;
+    -webkit-tap-highlight-color:transparent;
+  }
+  #wrap {
+    width:100%; height:100%;
+    display:flex; flex-direction:column;
+    align-items:center; justify-content:center;
+    gap:8px; padding:6px;
+  }
+  #stage {
+    position:relative;
+    /* 가로폭이 허용하는 높이를 넘지 않게 — 넘치면 위아래에 빈 여백이 생긴다 */
+    height:min(100%, calc((100vw - 12px) * 720 / 480));
+    aspect-ratio: 480 / 720;
+    max-width:100%;
+  }
+  canvas {
+    display:block;
+    width:100%; height:100%;
+    /* 상자 비율이 어긋나도 게임 화면은 480:720 을 유지하고 남는 자리는 여백으로 */
+    object-fit:contain;
+    border-radius:10px;
+    background:#05060f;
+    touch-action:none;
+    outline:none;
+  }
+  /* 아이프레임 안에서 키보드 포커스를 잃었을 때 안내 */
+  #focusHint {
+    position:absolute; inset:0;
+    display:none;
+    align-items:center; justify-content:center;
+    background:rgba(5,6,15,.72);
+    border-radius:10px;
+    color:#dfe6ff; font-size:15px; font-weight:700;
+    letter-spacing:.5px; cursor:pointer; text-align:center;
+    padding:20px;
+  }
+  #focusHint.show { display:flex; }
+  /* 모바일 게임패드 — 왼쪽 스틱 + 오른쪽 버튼 */
+  #gamepad {
+    display:none;
+    width:100%; max-width:480px;
+    align-items:center; justify-content:space-between;
+    gap:10px; padding:0 4px;
+    touch-action:none; user-select:none;
+  }
+  #gamepad.show { display:flex; }
+  #stick {
+    position:relative; flex:none;
+    width:clamp(76px,26vw,104px); aspect-ratio:1;
+    border-radius:50%;
+    background:radial-gradient(circle at 50% 40%, #182142, #0b1024);
+    border:2px solid #ffffff2e;
+    box-shadow:inset 0 0 22px #0006;
+  }
+  #knob {
+    position:absolute; left:50%; top:50%;
+    width:44%; aspect-ratio:1; margin:-22% 0 0 -22%;
+    border-radius:50%;
+    background:#2b3767; border:2px solid #ffffff4d;
+    box-shadow:0 0 14px #0008;
+  }
+  #padbtns { display:flex; align-items:center; gap:9px; }
+  .pad-btn {
+    flex:none; aspect-ratio:1;
+    width:clamp(50px,17vw,66px);
+    border-radius:50%;
+    font-family:inherit; font-size:clamp(11px,3.2vw,13px);
+    font-weight:800; line-height:1.15;
+    color:#fff; background:#141a30;
+    border:2px solid #ffffff33;
+    cursor:pointer; user-select:none;
+    touch-action:none;
+  }
+  #btnFire { width:clamp(58px,20vw,78px); font-size:clamp(12px,3.6vw,15px); }
+  .pad-btn:active { filter:brightness(1.6); }
+  #btnSwap.red  { background:#5a1024; border-color:#ff3b5c; }
+  #btnSwap.blue { background:#0e2352; border-color:#3b8cff; }
+  #btnBomb.ready { background:#4a3a08; border-color:#ffd23b; color:#ffe98a; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="stage">
+    <canvas id="cv" width="480" height="720" tabindex="0"></canvas>
+    <div id="focusHint">화면을 클릭하면<br>키보드 조작이 시작됩니다</div>
+  </div>
+  <div id="gamepad">
+    <div id="stick"><div id="knob"></div></div>
+    <div id="padbtns">
+      <button id="btnSwap" class="pad-btn red">색<br>전환</button>
+      <button id="btnBomb" class="pad-btn">필살기</button>
+      <button id="btnFire" class="pad-btn">발사</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+'use strict';
+
+/* ============================================================
+   0. 기본 설정
+   ============================================================ */
+const W = 480, H = 720;
+const cv  = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+const COLOR = {
+  red:  { main:'#ff3b5c', soft:'#ff8fa3', dark:'#5a1024', name:'RED'  },
+  blue: { main:'#3b8cff', soft:'#8fc2ff', dark:'#0e2352', name:'BLUE' }
+};
+const other = c => (c === 'red' ? 'blue' : 'red');
+
+const SHOOT_CD   = 200;   // 발사 쿨타임(ms) — 연사 제한
+const HOLD_Y     = 300;   // 공격형 적이 멈춰 서는 높이 (이 아래로는 내려오지 않는다)
+const MAX_ENERGY = 20;    // 필살기 게이지 최대치
+const PLAY_TOP   = 62;    // HUD 아래가 실제 플레이 영역
+
+/* 안전한 최고점수 저장 (구글 사이트 iframe에서 막힐 수 있어 try/catch) */
+const store = {
+  get() { try { return parseInt(localStorage.getItem('css_best') || '0', 10) || 0; } catch (e) { return 0; } },
+  set(v){ try { localStorage.setItem('css_best', String(v)); } catch (e) {} }
+};
+
+/* ============================================================
+   1. 입력
+   ============================================================ */
+const keys = Object.create(null);
+const BLOCK = ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space','ShiftLeft','ShiftRight','KeyF','KeyZ','KeyR','Enter'];
+
+window.addEventListener('keydown', e => {
+  if (BLOCK.indexOf(e.code) >= 0) e.preventDefault();   // 페이지 스크롤 방지
+  if (keys[e.code]) return;                              // 키 반복 무시
+  keys[e.code] = true;
+  onPress(e.code);
+}, { passive:false });
+
+window.addEventListener('keyup', e => { keys[e.code] = false; }, { passive:false });
+window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
+
+function onPress(code) {
+  const ended = (game.state === 'over' || game.state === 'clear');
+
+  if (code === 'ShiftLeft' || code === 'ShiftRight') swapColor();
+  if (code === 'KeyR' && ended) reset();
+
+  // 타이틀·결과 화면에서는 Space/Enter 가 시작·재시작
+  if (code === 'Space' || code === 'Enter') {
+    if (game.state === 'title') { start(); return; }
+    if (ended) { reset(); return; }
+  }
+  // 게임 중에는 F / Enter 가 필살기 (Space 는 발사라 제외)
+  if (code === 'KeyF' || code === 'KeyZ' || code === 'Enter') useBomb();
+}
+
+/* 마우스 우클릭으로도 색 전환 */
+cv.addEventListener('contextmenu', e => { e.preventDefault(); swapColor(); });
+
+/* --- 포커스 안내 (구글 사이트 삽입 시 키 입력이 안 먹는 문제 대응) --- */
+const hint = document.getElementById('focusHint');
+function focusGame() { try { window.focus(); } catch (e) {} cv.focus(); hint.classList.remove('show'); }
+cv.addEventListener('pointerdown', focusGame);
+hint.addEventListener('pointerdown', focusGame);
+document.addEventListener('click', focusGame);   // 이중 iframe에서 포커스가 풀렸을 때 대비
+window.addEventListener('blur',  () => { if (!touchMode) hint.classList.add('show'); });
+window.addEventListener('focus', () => hint.classList.remove('show'));
+window.addEventListener('load',  () => focusGame());
+
+/* --- 터치 조작 --- */
+let touchMode = false;
+let touchTarget = null;   // {x,y} 캔버스 좌표
+const pad     = { dx:0, dy:0, fire:false };   // 게임패드 입력
+const gamepad = document.getElementById('gamepad');
+const stick   = document.getElementById('stick');
+const knob    = document.getElementById('knob');
+const btnSwap = document.getElementById('btnSwap');
+const btnBomb = document.getElementById('btnBomb');
+const btnFire = document.getElementById('btnFire');
+
+function enableTouch() {
+  if (touchMode) return;
+  touchMode = true;
+  gamepad.classList.add('show');
+  hint.classList.remove('show');
+}
+if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) enableTouch();
+
+// object-fit:contain 으로 생긴 여백을 빼고 실제 그려진 영역 기준으로 좌표를 환산한다
+function toCanvas(e) {
+  const r = cv.getBoundingClientRect();
+  const scale = Math.min(r.width / W, r.height / H);
+  const ox = r.left + (r.width  - W * scale) / 2;
+  const oy = r.top  + (r.height - H * scale) / 2;
+  return { x:(e.clientX - ox) / scale, y:(e.clientY - oy) / scale };
+}
+cv.addEventListener('pointerdown', e => {
+  if (e.pointerType === 'touch') enableTouch();
+  if (game.state === 'title') { start(); return; }
+  if (game.state === 'over' || game.state === 'clear') { reset(); return; }
+  touchTarget = toCanvas(e);
+  cv.setPointerCapture(e.pointerId);
+});
+cv.addEventListener('pointermove', e => { if (touchTarget) touchTarget = toCanvas(e); });
+const dropTouch = () => { touchTarget = null; };
+cv.addEventListener('pointerup', dropTouch);
+cv.addEventListener('pointercancel', dropTouch);
+cv.addEventListener('pointerleave', dropTouch);
+
+/* --- 게임패드: 왼쪽 아날로그 스틱 --- */
+let stickId = null;
+
+function stickMove(e) {
+  const r = stick.getBoundingClientRect();
+  const dx = e.clientX - (r.left + r.width/2);
+  const dy = e.clientY - (r.top  + r.height/2);
+  const dist = Math.hypot(dx, dy);
+  const max  = r.width * 0.33;
+  const nx = dist ? dx / dist : 0, ny = dist ? dy / dist : 0;
+  const reach = Math.min(dist, max);
+  knob.style.transform = 'translate(' + (nx*reach) + 'px,' + (ny*reach) + 'px)';
+  const power = Math.min(1, dist / max);
+  if (power < 0.18) { pad.dx = 0; pad.dy = 0; }     // 손떨림 방지 데드존
+  else { pad.dx = nx * power; pad.dy = ny * power; }
+}
+function stickEnd() {
+  stickId = null;
+  pad.dx = 0; pad.dy = 0;
+  knob.style.transform = 'translate(0,0)';
+}
+stick.addEventListener('pointerdown', e => {
+  e.preventDefault(); enableTouch();
+  stickId = e.pointerId; stick.setPointerCapture(e.pointerId);
+  if (game.state === 'title') start();
+  stickMove(e);
+});
+stick.addEventListener('pointermove', e => { if (stickId === e.pointerId) stickMove(e); });
+stick.addEventListener('pointerup', stickEnd);
+stick.addEventListener('pointercancel', stickEnd);
+
+/* --- 게임패드: 오른쪽 버튼 --- */
+function tap(el, fn) {
+  el.addEventListener('pointerdown', e => { e.preventDefault(); enableTouch(); fn(); });
+}
+tap(btnSwap, swapColor);
+tap(btnBomb, useBomb);
+
+btnFire.addEventListener('pointerdown', e => {
+  e.preventDefault(); enableTouch();
+  if (game.state === 'title') { start(); return; }
+  if (game.state === 'over' || game.state === 'clear') { reset(); return; }
+  pad.fire = true;
+  btnFire.setPointerCapture(e.pointerId);
+});
+const fireEnd = () => { pad.fire = false; };
+btnFire.addEventListener('pointerup', fireEnd);
+btnFire.addEventListener('pointercancel', fireEnd);
+
+/* ============================================================
+   2. 게임 상태
+   ============================================================ */
+const game = {
+  state:'title',          // title | wave | play | over | clear
+  score:0, best:store.get(),
+  wave:0, waveTimer:0, waveLabel:'',
+  spawns:[], spawnIdx:0, spawnClock:0,
+  shake:0, flash:0, flashColor:'#fff',
+  bombFx:0, bombX:0, bombY:0,
+  borderPulse:0, time:0
+};
+
+let player, bullets, ebullets, enemies, particles, boss;
+const stars = [];
+for (let i = 0; i < 90; i++) {
+  stars.push({ x:Math.random()*W, y:Math.random()*H, z:Math.random()*2+0.4 });
+}
+
+function makePlayer() {
+  return {
+    x:W/2, y:H-110, w:22, h:26,
+    color:'red',
+    hp:5, maxHp:5,
+    energy:0,
+    cd:0, inv:0,
+    swapFx:0
+  };
+}
+
+function reset() {
+  player    = makePlayer();
+  bullets   = [];
+  ebullets  = [];
+  enemies   = [];
+  particles = [];
+  boss      = null;
+  game.score = 0;
+  game.wave  = 0;
+  game.shake = 0;
+  game.flash = 0;
+  game.bombFx = 0;
+  reported = false;
+  nextWave();
+}
+function start() { reset(); }
+
+/* ============================================================
+   3. 웨이브 구성
+   ============================================================ */
+const WAVE_INFO = [
+  { title:'WAVE 1', sub:'같은 색 적은 총알이 튕긴다' },
+  { title:'WAVE 2', sub:'두 색이 섞여 나온다' },
+  { title:'WAVE 3', sub:'같은 색 총알은 통과 · 에너지 충전' },
+  { title:'WAVE 4', sub:'스스로 색을 바꾸는 적' },
+  { title:'BOSS',   sub:'1~3회 공격마다 색을 바꾼다' },
+  { title:'WAVE 6', sub:'강화 편대 — 체력·속도·탄속 상승' },
+  { title:'WAVE 7', sub:'강화 변색기 편대 — 3방향 사격' },
+  { title:'FINAL BOSS', sub:'무적 방벽 · 호위기 · 양색 탄막' }
+];
+
+function buildSpawns(w) {
+  const list = [];
+  const rx = () => 50 + Math.random() * (W - 100);
+  let t = 600;
+
+  if (w === 1) {
+    for (let i = 0; i < 6; i++)  { list.push({ t:t, type:'grunt', color:'blue', x:rx() }); t += 700; }
+    for (let i = 0; i < 6; i++)  { list.push({ t:t, type:'grunt', color:'red',  x:rx() }); t += 700; }
+  } else if (w === 2) {
+    for (let i = 0; i < 16; i++) {
+      list.push({ t:t, type:'grunt', color:Math.random() < .5 ? 'red' : 'blue', x:rx() });
+      t += 520;
+    }
+  } else if (w === 3) {
+    for (let i = 0; i < 14; i++) {
+      const c = Math.random() < .5 ? 'red' : 'blue';
+      list.push({ t:t, type:(i % 3 === 2 ? 'shooter' : 'grunt'), color:c, x:rx() });
+      t += 500;
+    }
+  } else if (w === 4) {
+    for (let i = 0; i < 16; i++) {
+      const c = Math.random() < .5 ? 'red' : 'blue';
+      let type = 'grunt';
+      if (i % 4 === 1) type = 'shooter';
+      if (i % 4 === 3) type = 'switcher';
+      list.push({ t:t, type:type, color:c, x:rx() });
+      t += 460;
+    }
+  } else if (w === 5) {
+    list.push({ t:800, type:'boss', color:'red', x:W/2 });
+  } else if (w === 6) {
+    // 강화된 1~2웨이브 재구성
+    for (let i = 0; i < 20; i++) {
+      const c = Math.random() < .5 ? 'red' : 'blue';
+      list.push({ t:t, type:(i % 4 === 3 ? 'shooter' : 'grunt'), color:c, x:rx(), hard:true });
+      if (i % 5 === 4) list.push({ t:t + 130, type:'grunt', color:other(c), x:rx(), hard:true });
+      t += 380;
+    }
+  } else if (w === 7) {
+    // 강화된 3~4웨이브 재구성
+    for (let i = 0; i < 22; i++) {
+      const c = Math.random() < .5 ? 'red' : 'blue';
+      let type = 'grunt';
+      if (i % 3 === 1) type = 'shooter';
+      if (i % 3 === 2) type = 'switcher';
+      list.push({ t:t, type:type, color:c, x:rx(), hard:true });
+      t += 340;
+    }
+  } else if (w === 8) {
+    list.push({ t:900, type:'boss2', color:'red', x:W/2 });
+  }
+  return list;
+}
+
+function nextWave() {
+  game.wave++;
+  if (game.wave > WAVE_INFO.length) { game.state = 'clear'; saveBest(); return; }
+  game.spawns   = buildSpawns(game.wave);
+  game.spawnIdx = 0;
+  game.spawnClock = 0;
+  game.waveTimer  = 2000;
+  game.state = 'wave';
+  // 보스 직전 / 직후에는 체력을 완전히 회복 (체크포인트)
+  if ((game.wave === 6 || game.wave === 8) && player) player.hp = player.maxHp;
+}
+
+/* ============================================================
+   4. 적 생성
+   ============================================================ */
+function spawnEnemy(s) {
+  if (s.type === 'boss')  { spawnBoss(0); return; }
+  if (s.type === 'boss2') { spawnBoss(1); return; }
+
+  const hard = !!s.hard;
+  const e = {
+    type:s.type, color:s.color, hard:hard,
+    x:s.x, y:-30, w:30, h:30,
+    hp:(s.type === 'grunt' ? 1 : (hard ? 3 : 2)),
+    t:Math.random() * 100,
+    vy:(s.type === 'grunt' ? 1.5 : 1.1) * (hard ? 1.45 : 1),
+    amp:(s.type === 'grunt' ? 40 : 18) * (hard ? 1.4 : 1),
+    baseX:s.x,
+    fireTimer:(hard ? 600 : 900) + Math.random() * (hard ? 500 : 900),
+    swapTimer:(hard ? 1000 : 1500),
+    hit:0,
+    // 사격하는 적은 정해진 높이에서 멈춰 버틴다 — 격추 전까지 사라지지 않는다
+    hold:(s.type === 'shooter'),
+    holdY:HOLD_Y + Math.random() * 80
+  };
+  enemies.push(e);
+}
+
+function spawnBoss(tier) {
+  const t2 = (tier === 1);
+  boss = {
+    type:'boss', tier:tier,
+    x:W/2, y:(t2 ? -110 : -90),
+    w:(t2 ? 150 : 132), h:(t2 ? 86 : 74),
+    color:'red',
+    hp:(t2 ? 140 : 50), maxHp:(t2 ? 140 : 50),
+    t:0, hit:0, entering:true,
+    shotsLeft:1 + Math.floor(Math.random() * 3),   // ★ 1~3회 공격 후 변신
+    swapWarn:0,
+    fireTimer:(t2 ? 1200 : 1600),
+    pattern:0, phase:0, shield:false, lastKind:'',
+    gates:(t2 ? [0.66, 0.33] : []),                // 무적 방벽 발동 체력 구간
+    burstLeft:0, burstTimer:0, burstGap:0, burstKind:'', burstAng:0
+  };
+  enemies.push(boss);
+}
+
+/* 최종 보스 호위기 — 전부 격추해야 무적 방벽이 풀린다 */
+function spawnGuards(b, n) {
+  for (let i = 0; i < n; i++) {
+    enemies.push({
+      type:'guard', color:(i % 2 ? 'blue' : 'red'),
+      x:b.x, y:b.y, w:26, h:26,
+      hp:3, maxHp:3, t:0,
+      ang:i / n * Math.PI * 2, rad:0, radTarget:105 + (i % 2) * 22,
+      guardOf:b, fireTimer:900 + i * 260, hit:0
+    });
+  }
+}
+
+/* ============================================================
+   5. 플레이어 행동
+   ============================================================ */
+function swapColor() {
+  if (game.state !== 'play' && game.state !== 'wave') return;
+  if (!player) return;
+  player.color = other(player.color);
+  player.swapFx = 1;
+  game.borderPulse = 1;
+  btnSwap.className = 'pad-btn ' + player.color;
+  for (let i = 0; i < 14; i++) {
+    particles.push({
+      x:player.x, y:player.y,
+      vx:Math.cos(i / 14 * Math.PI * 2) * 2.6,
+      vy:Math.sin(i / 14 * Math.PI * 2) * 2.6,
+      life:24, max:24, c:COLOR[player.color].main, r:2.5
+    });
+  }
+}
+
+function shoot() {
+  bullets.push({
+    x:player.x, y:player.y - 16, w:6, h:16,
+    vy:-13.8,                             // 탄속 1.25배
+    color:player.color                    // ★ 발사 시점의 플레이어 색을 그대로 가짐
+  });
+  player.cd = SHOOT_CD;
+}
+
+function useBomb() {
+  if (game.state !== 'play' && game.state !== 'wave') return;
+  if (!player || player.energy < MAX_ENERGY) return;
+  player.energy = 0;
+  game.flash = 1;
+  game.flashColor = '#ffffff';
+  game.shake = 22;
+
+  // 충격파 — 플레이어 위치에서 화면 전체로 퍼진다
+  game.bombFx = 1;
+  game.bombX  = player.x;
+  game.bombY  = player.y;
+  for (let i = 0; i < 40; i++) {
+    const a = i / 40 * Math.PI * 2;
+    particles.push({
+      x:player.x, y:player.y,
+      vx:Math.cos(a) * (5.5 + Math.random()*2.5),
+      vy:Math.sin(a) * (5.5 + Math.random()*2.5),
+      life:36, max:36,
+      c:(i % 2 ? COLOR.red.main : COLOR.blue.main), r:3
+    });
+  }
+
+  // 적 총알 전부 소거 (점수로 환산)
+  for (const b of ebullets) {
+    game.score += 10;
+    burst(b.x, b.y, b.color, 5);
+  }
+  ebullets.length = 0;
+
+  // 색 관계없이 모든 적에게 3 데미지 (무적 방벽 중인 보스는 제외)
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    if (enemies[i].shield) continue;
+    damageEnemy(enemies[i], 3, i);
+  }
+}
+
+/* ============================================================
+   6. 충돌 (AABB)
+   ============================================================ */
+function hitAABB(a, b) {
+  return Math.abs(a.x - b.x) * 2 < (a.w + b.w) &&
+         Math.abs(a.y - b.y) * 2 < (a.h + b.h);
+}
+
+function damageEnemy(e, dmg, idx) {
+  e.hp -= dmg;
+  e.hit = 1;
+  if (e.hp <= 0) {
+    burst(e.x, e.y, e.color, e.type === 'boss' ? 60 : 16);
+    game.score += (e.type === 'boss' ? (e.tier === 1 ? 20000 : 5000)
+                 : e.type === 'guard' ? 400
+                 : e.type === 'grunt' ? 100 : 180) * (e.hard ? 2 : 1);
+    game.shake = Math.max(game.shake, e.type === 'boss' ? 26 : 5);
+    if (e.type === 'boss') { boss = null; game.flash = 1; game.flashColor = COLOR[e.color].main; }
+    if (idx === undefined) idx = enemies.indexOf(e);
+    if (idx >= 0) enemies.splice(idx, 1);
+    return true;
+  }
+  return false;
+}
+
+function hurtPlayer() {
+  if (player.inv > 0) return;
+  player.hp--;
+  player.inv = 1100;
+  game.shake = 14;
+  game.flash = .7;
+  game.flashColor = COLOR[other(player.color)].main;
+  burst(player.x, player.y, '#ffffff', 18);
+  if (player.hp <= 0) {
+    player.hp = 0;
+    game.state = 'over';
+    saveBest();
+    burst(player.x, player.y, COLOR[player.color].main, 40);
+  }
+}
+
+function saveBest() {
+  if (game.score > game.best) { game.best = game.score; store.set(game.best); }
+  reportResult();
+}
+
+/* 결과를 바깥 페이지(소개 사이트)의 랭킹 시스템으로 넘긴다.
+   단독으로 열었을 때는 부모 창이 없으므로 아무 일도 하지 않는다. */
+let reported = false;
+function reportResult() {
+  if (reported || window.parent === window) return;
+  reported = true;
+  const msg = {
+    type:    'colorshift:gameover',
+    score:   game.score,
+    stage:   Math.min(game.wave, WAVE_INFO.length),
+    cleared: game.state === 'clear'
+  };
+  // Apps Script 처럼 iframe 이 한 겹 더 있을 수 있어 부모와 최상위에 모두 보낸다
+  try { window.parent.postMessage(msg, '*'); } catch (e) {}
+  try { if (window.top !== window.parent) window.top.postMessage(msg, '*'); } catch (e) {}
+}
+
+function burst(x, y, c, n) {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2, s = Math.random() * 3.4 + .6;
+    particles.push({ x:x, y:y, vx:Math.cos(a)*s, vy:Math.sin(a)*s,
+                     life:30 + Math.random()*20, max:50, c:c, r:Math.random()*2.4+1 });
+  }
+}
+
+/* ============================================================
+   7. 업데이트
+   ============================================================ */
+function update(dt, k) {   // dt: ms, k: 60fps 기준 시간 배율
+  game.time += dt;
+
+  // 배경 별
+  for (const s of stars) {
+    s.y += s.z * 1.6 * k;
+    if (s.y > H) { s.y = -2; s.x = Math.random() * W; }
+  }
+
+  // 이펙트 감쇠
+  if (game.shake > 0)  game.shake = Math.max(0, game.shake - 0.9 * k);
+  if (game.flash > 0)  game.flash = Math.max(0, game.flash - 0.05 * k);
+  if (game.bombFx > 0) game.bombFx = Math.max(0, game.bombFx - 0.028 * k);
+  if (game.borderPulse > 0) game.borderPulse = Math.max(0, game.borderPulse - 0.035 * k);
+
+  // 파티클
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx * k; p.y += p.vy * k;
+    p.vx *= 0.96; p.vy *= 0.96;
+    p.life -= k;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+
+  if (game.state === 'title' || game.state === 'over' || game.state === 'clear') return;
+
+  // 웨이브 배너
+  if (game.state === 'wave') {
+    game.waveTimer -= dt;
+    if (game.waveTimer <= 0) game.state = 'play';
+  }
+
+  /* ---------- 플레이어 ---------- */
+  if (player.swapFx > 0) player.swapFx = Math.max(0, player.swapFx - 0.06 * k);
+  if (player.inv > 0)    player.inv -= dt;
+  if (player.cd > 0)     player.cd  -= dt;
+
+  const speed = 4.4 * k;
+  let dx = 0, dy = 0;
+  if (keys.ArrowLeft  || keys.KeyA) dx -= 1;
+  if (keys.ArrowRight || keys.KeyD) dx += 1;
+  if (keys.ArrowUp    || keys.KeyW) dy -= 1;
+  if (keys.ArrowDown  || keys.KeyS) dy += 1;
+  dx += pad.dx; dy += pad.dy;                      // 게임패드 스틱
+  const mag = Math.hypot(dx, dy);
+  if (mag > 1) { dx /= mag; dy /= mag; }           // 대각선이 빨라지지 않도록
+  player.x += dx * speed;
+  player.y += dy * speed;
+
+  // 터치: 손가락 쪽으로 부드럽게 이동 + 자동 발사
+  if (touchTarget) {
+    player.x += (touchTarget.x - player.x) * 0.22 * k;
+    player.y += (touchTarget.y - 34 - player.y) * 0.22 * k;
+  }
+
+  // ★ 화면 경계 밖으로 못 나가게 제한
+  player.x = Math.max(player.w/2, Math.min(W - player.w/2, player.x));
+  player.y = Math.max(PLAY_TOP + player.h/2, Math.min(H - player.h/2, player.y));
+
+  // 발사 (쿨타임 적용)
+  if ((keys.Space || touchTarget || pad.fire) && player.cd <= 0 && game.state === 'play') shoot();
+
+  /* ---------- 적 스폰 ---------- */
+  if (game.state === 'play') {
+    game.spawnClock += dt;
+    while (game.spawnIdx < game.spawns.length && game.spawns[game.spawnIdx].t <= game.spawnClock) {
+      spawnEnemy(game.spawns[game.spawnIdx]);
+      game.spawnIdx++;
+    }
+    // 전멸 + 스폰 종료 → 다음 웨이브
+    if (game.spawnIdx >= game.spawns.length && enemies.length === 0) {
+      game.score += 500;
+      nextWave();
+    }
+  }
+
+  /* ---------- 적 이동 ---------- */
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    const e = enemies[i];
+    e.t += dt;
+    if (e.hit > 0) e.hit = Math.max(0, e.hit - 0.12 * k);
+
+    if (e.type === 'boss') {
+      updateBoss(e, dt, k);
+      continue;
+    }
+
+    if (e.type === 'guard') {
+      updateGuard(e, dt, k);
+      if (hitAABB(e, player)) {
+        hurtPlayer();
+        if (e.color !== player.color) damageEnemy(e, 1, i);
+      }
+      continue;
+    }
+
+    if (e.hold && e.y >= e.holdY) {
+      e.y = e.holdY + Math.sin(e.t / 650) * 9;     // 제자리에서 위아래로 부유
+    } else {
+      e.y += e.vy * k;
+    }
+    e.x = e.baseX + Math.sin(e.t / 420) * e.amp;
+    e.x = Math.max(e.w/2, Math.min(W - e.w/2, e.x));
+
+    // 색이 바뀌는 적
+    if (e.type === 'switcher') {
+      e.swapTimer -= dt;
+      if (e.swapTimer <= 0) { e.color = other(e.color); e.swapTimer = 1500; }
+    }
+
+    // 사격 (웨이브 3부터)
+    if (e.type === 'shooter' && game.wave >= 3 && e.y > PLAY_TOP + 20) {
+      e.fireTimer -= dt;
+      if (e.fireTimer <= 0) {
+        e.fireTimer = (e.hard ? 950 : 1500) + Math.random() * (e.hard ? 450 : 700);
+        if (e.hard && game.wave >= 7) {
+          for (let s = -1; s <= 1; s++) aimShot(e, 4.4, s * 0.22);   // 강화형은 3방향
+        } else {
+          aimShot(e, e.hard ? 4.4 : 3.9);
+        }
+      }
+    }
+
+    // 화면 아래로 벗어나면 제거 (버티는 적은 격추해야만 사라진다)
+    if (!e.hold && e.y - e.h > H + 20) { enemies.splice(i, 1); continue; }
+
+    // 몸통 충돌
+    if (hitAABB(e, player)) {
+      hurtPlayer();
+      if (e.color !== player.color) damageEnemy(e, 1, i);
+    }
+  }
+
+  /* ---------- 플레이어 총알 ---------- */
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    const b = bullets[i];
+    b.y += b.vy * k;
+
+    // ★ 화면 밖 총알은 배열에서 제거
+    if (b.y < -30) { bullets.splice(i, 1); continue; }
+
+    let gone = false;
+    for (let j = enemies.length - 1; j >= 0; j--) {
+      const e = enemies[j];
+      if (!hitAABB(b, e)) continue;
+
+      if (b.color === e.color) {
+        // ★ 같은 색 → 흡수/튕김. 적은 멀쩡하고 총알만 사라진다.
+        spark(b.x, b.y, e.color);
+      } else if (e.shield) {
+        // 무적 방벽 — 색이 맞아도 데미지가 들어가지 않는다
+        spark(b.x, b.y, '#7cf3ff');
+      } else {
+        // ★ 다른 색 → 데미지
+        damageEnemy(e, 1, j);
+        spark(b.x, b.y, b.color);
+      }
+      gone = true;
+      break;
+    }
+    if (gone) bullets.splice(i, 1);
+  }
+
+  /* ---------- 적 총알 ---------- */
+  for (let i = ebullets.length - 1; i >= 0; i--) {
+    const b = ebullets[i];
+    b.x += b.vx * k;
+    b.y += b.vy * k;
+
+    // ★ 화면 밖 총알 제거
+    if (b.y > H + 30 || b.y < -30 || b.x < -30 || b.x > W + 30) { ebullets.splice(i, 1); continue; }
+
+    if (hitAABB(b, player)) {
+      if (b.color === player.color) {
+        // ★ 같은 색 → 통과(흡수). 피해 없음 + 에너지 충전
+        if (!b.absorbed) {
+          b.absorbed = true;
+          player.energy = Math.min(MAX_ENERGY, player.energy + 1);
+          game.score += 10;
+          spark(b.x, b.y, b.color);
+        }
+        // 통과시키므로 총알을 지우지 않는다
+      } else {
+        // ★ 다른 색 → 체력 감소
+        hurtPlayer();
+        ebullets.splice(i, 1);
+      }
+    }
+  }
+
+  btnBomb.className = 'pad-btn' + (player.energy >= MAX_ENERGY ? ' ready' : '');
+}
+
+function spark(x, y, c) {
+  for (let i = 0; i < 6; i++) {
+    const a = Math.random() * Math.PI * 2, s = Math.random() * 2 + .5;
+    particles.push({ x:x, y:y, vx:Math.cos(a)*s, vy:Math.sin(a)*s,
+                     life:14, max:14, c:c, r:Math.random()*1.8+.8 });
+  }
+}
+
+function aimShot(e, spd, angOff) {
+  const a = Math.atan2(player.y - e.y, player.x - e.x) + (angOff || 0);
+  ebullets.push({
+    x:e.x, y:e.y + e.h/2, w:9, h:9,
+    vx:Math.cos(a) * spd, vy:Math.sin(a) * spd,
+    color:e.color, absorbed:false
+  });
+}
+
+function updateGuard(g, dt, k) {
+  const b = g.guardOf;
+  const alive = b && b.hp > 0;
+  g.rad += (g.radTarget - g.rad) * 0.045 * k;
+  g.ang += 0.023 * k;
+  const cx = alive ? b.x : W/2;
+  const cy = alive ? b.y : 150;
+  g.x = cx + Math.cos(g.ang) * g.rad;
+  g.y = cy + Math.sin(g.ang) * g.rad * 0.68;
+  g.fireTimer -= dt;
+  if (g.fireTimer <= 0) {
+    g.fireTimer = 1300 + Math.random() * 600;
+    aimShot(g, 4.0);
+  }
+}
+
+function updateBoss(b, dt, k) {
+  const t2 = (b.tier === 1);
+
+  if (b.entering) {
+    b.y += 1.5 * k;
+    const dest = t2 ? 132 : 140;
+    if (b.y >= dest) { b.y = dest; b.entering = false; }
+    return;
+  }
+
+  /* ---- 이동 ---- */
+  if (!t2) {
+    b.x = W/2 + Math.sin(b.t / 1400) * (W/2 - b.w/2 - 14);
+    b.y = 140 + Math.sin(b.t / 900) * 14;
+  } else {
+    const sp = 1300 - b.phase * 320;                       // 페이즈가 오를수록 빨라짐
+    b.x = W/2 + Math.sin(b.t / sp) * (W/2 - b.w/2 - 10);
+    b.y = (132 + b.phase * 20) + Math.sin(b.t / (sp * 0.6)) * (18 + b.phase * 12);
+  }
+
+  // 다음 공격 후 색이 바뀐다는 예고
+  b.swapWarn = (b.shotsLeft <= 1) ? 1 : 0;
+
+  /* ---- 무적 방벽 / 호위기 (최종 보스) ---- */
+  if (t2 && !b.shield && b.gates.length && b.hp / b.maxHp <= b.gates[0]) {
+    b.gates.shift();
+    b.phase++;
+    b.shield = true;
+    spawnGuards(b, b.phase === 1 ? 4 : 6);
+    game.flash = 1; game.flashColor = '#7cf3ff';
+    game.shake = 20;
+  }
+  if (b.shield && !enemies.some(e => e.guardOf === b)) {
+    b.shield = false;
+    game.flash = .8; game.flashColor = '#ffffff';
+    game.shake = 16;
+    burst(b.x, b.y, '#7cf3ff', 36);
+  }
+
+  /* ---- 사격 ---- */
+  if (b.burstLeft > 0) {
+    b.burstTimer -= dt;
+    if (b.burstTimer <= 0) { burstStep(b); b.burstLeft--; b.burstTimer = b.burstGap; }
+  } else {
+    b.fireTimer -= dt;
+    if (b.fireTimer <= 0) {
+      fireBossPattern(b);
+      b.shotsLeft--;
+      if (b.shotsLeft <= 0) {
+        // ★ 1~3회 공격 후 변신 (횟수는 매번 랜덤)
+        b.color = other(b.color);
+        b.shotsLeft = 1 + Math.floor(Math.random() * 3);
+        burst(b.x, b.y, b.color, t2 ? 30 : 22);
+        game.borderPulse = Math.max(game.borderPulse, .3);
+      }
+    }
+  }
+
+  if (hitAABB(b, player)) hurtPlayer();
+}
+
+function fireBossPattern(b) {
+  /* ---------- 1차 보스 ---------- */
+  if (b.tier !== 1) {
+    if (b.pattern === 0) {
+      for (let i = -2; i <= 2; i++) aimShot(b, 3.75, i * 0.18);
+    } else {
+      for (let i = 0; i < 3; i++) {
+        ebullets.push({ x:b.x - 44, y:b.y + 26, w:9, h:9, vx:-0.9, vy:4.1, color:b.color, absorbed:false });
+        ebullets.push({ x:b.x + 44, y:b.y + 26, w:9, h:9, vx: 0.9, vy:4.1, color:b.color, absorbed:false });
+      }
+      aimShot(b, 4.25);
+    }
+    b.pattern = 1 - b.pattern;
+    b.fireTimer = 1300;
+    return;
+  }
+
+  /* ---------- 최종 보스 ---------- */
+  const pool = b.phase === 0 ? ['spread','ring','rain']
+             : b.phase === 1 ? ['spread','ring','rain','spiral']
+             :                 ['spread','ring','rain','spiral','wall'];
+  let kind = pool[Math.floor(Math.random() * pool.length)];
+  if (kind === b.lastKind) kind = pool[(pool.indexOf(kind) + 1) % pool.length];
+  b.lastKind = kind;
+
+  const fast = 1 + b.phase * 0.14;
+
+  if (kind === 'spread') {                       // 유도 확산탄
+    const n = 5 + b.phase * 2;
+    for (let i = 0; i < n; i++) aimShot(b, 3.9 * fast, (i - (n-1)/2) * 0.16);
+
+  } else if (kind === 'ring') {                  // ★ 양색 원형 탄막 — 절반은 반드시 피해야 한다
+    const n = 14 + b.phase * 4;
+    for (let i = 0; i < n; i++) {
+      const a = i / n * Math.PI * 2 + b.t / 900;
+      ebullets.push({ x:b.x, y:b.y, w:9, h:9,
+        vx:Math.cos(a) * 3.1 * fast, vy:Math.sin(a) * 3.1 * fast,
+        color:(i % 2 ? 'red' : 'blue'), absorbed:false });
+    }
+
+  } else if (kind === 'rain') {                  // 화면 위에서 쏟아지는 양색 비
+    b.burstKind = 'rain'; b.burstLeft = 8 + b.phase * 3; b.burstGap = 110; b.burstTimer = 0;
+
+  } else if (kind === 'spiral') {                // 회전 나선탄
+    b.burstKind = 'spiral'; b.burstLeft = 16 + b.phase * 6; b.burstGap = 70; b.burstTimer = 0;
+    b.burstAng = Math.random() * 6.283;
+
+  } else {                                       // 색이 다른 2겹 탄막 벽 (틈으로 빠져나가야 함)
+    b.burstKind = 'wall'; b.burstLeft = 2; b.burstGap = 560; b.burstTimer = 0;
+    b.burstAng = 60 + Math.random() * (W - 120);
+  }
+
+  b.fireTimer = b.burstLeft > 0 ? 420 : (1150 - b.phase * 180);
+}
+
+function burstStep(b) {
+  const fast = 1 + b.phase * 0.14;
+
+  if (b.burstKind === 'rain') {
+    const x = 30 + Math.random() * (W - 60);
+    ebullets.push({ x:x, y:PLAY_TOP - 10, w:9, h:9,
+      vx:(player.x - x) * 0.004, vy:3.6 * fast,
+      color:(Math.random() < .5 ? 'red' : 'blue'), absorbed:false });
+
+  } else if (b.burstKind === 'spiral') {
+    for (let i = 0; i < 2; i++) {
+      const a = b.burstAng + i * Math.PI;
+      ebullets.push({ x:b.x, y:b.y, w:9, h:9,
+        vx:Math.cos(a) * 3.3 * fast, vy:Math.sin(a) * 3.3 * fast,
+        color:b.color, absorbed:false });
+    }
+    b.burstAng += 0.44;
+
+  } else if (b.burstKind === 'wall') {
+    const gap = b.burstAng;
+    const col = (b.burstLeft === 2) ? b.color : other(b.color);
+    for (let x = 22; x < W - 10; x += 34) {
+      if (Math.abs(x - gap) < 50) continue;
+      ebullets.push({ x:x, y:PLAY_TOP - 10, w:9, h:9, vx:0, vy:3.2 * fast, color:col, absorbed:false });
+    }
+    b.burstAng = 60 + Math.random() * (W - 120);
+  }
+}
+
+/* ============================================================
+   8. 그리기
+   ============================================================ */
+function draw() {
+  ctx.save();
+
+  // 화면 흔들림
+  if (game.shake > 0) {
+    ctx.translate((Math.random()-.5) * game.shake, (Math.random()-.5) * game.shake);
+  }
+
+  // 배경
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, '#080a1c');
+  g.addColorStop(1, '#03040c');
+  ctx.fillStyle = g;
+  ctx.fillRect(-20, -20, W + 40, H + 40);
+
+  for (const s of stars) {
+    ctx.globalAlpha = 0.2 + s.z * 0.3;
+    ctx.fillStyle = '#9fb4ff';
+    ctx.fillRect(s.x, s.y, s.z, s.z * 2);
+  }
+  ctx.globalAlpha = 1;
+
+  if (game.state === 'title') { drawTitle(); ctx.restore(); drawBorder(); return; }
+
+  // 총알
+  for (const b of bullets) drawBullet(b.x, b.y, b.w, b.h, COLOR[b.color]);
+  for (const b of ebullets) {
+    const c = COLOR[b.color];
+    const same = player && b.color === player.color;
+    ctx.save();
+    ctx.globalAlpha = same ? 0.55 : 1;           // 통과하는 총알은 반투명
+    ctx.shadowBlur = 14; ctx.shadowColor = c.main;
+    ctx.fillStyle = same ? c.dark : c.main;
+    ctx.beginPath(); ctx.arc(b.x, b.y, b.w/2, 0, Math.PI*2); ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = c.soft; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.restore();
+  }
+
+  // 적
+  for (const e of enemies) (e.type === 'boss' ? drawBoss : drawEnemy)(e);
+
+  // 파티클
+  for (const p of particles) {
+    ctx.globalAlpha = Math.max(0, p.life / p.max);
+    ctx.fillStyle = p.c;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI*2); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // 필살기 충격파
+  if (game.bombFx > 0) drawBombFx();
+
+  // 플레이어
+  if (game.state !== 'over') drawPlayer();
+
+  ctx.restore();
+
+  // HUD / 오버레이
+  drawHUD();
+  if (game.state === 'wave')  drawWaveBanner();
+  if (game.state === 'over')  drawOver();
+  if (game.state === 'clear') drawClear();
+
+  // 화면 플래시
+  if (game.flash > 0) {
+    ctx.globalAlpha = game.flash * 0.45;
+    ctx.fillStyle = game.flashColor;
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalAlpha = 1;
+  }
+
+  drawBorder();
+}
+
+function drawBombFx() {
+  const p = 1 - game.bombFx;              // 0 → 1 로 퍼진다
+  const R = p * (H * 1.05);
+  const x = game.bombX, y = game.bombY;
+
+  ctx.save();
+  // 바깥 링 — 내 색
+  ctx.globalAlpha = game.bombFx * 0.85;
+  ctx.lineWidth = 6 + game.bombFx * 20;
+  ctx.strokeStyle = COLOR[player.color].main;
+  ctx.shadowBlur = 40; ctx.shadowColor = COLOR[player.color].main;
+  ctx.beginPath(); ctx.arc(x, y, R, 0, Math.PI*2); ctx.stroke();
+
+  // 안쪽 링 — 반대 색
+  ctx.globalAlpha = game.bombFx * 0.6;
+  ctx.lineWidth = 4 + game.bombFx * 10;
+  ctx.strokeStyle = COLOR[other(player.color)].main;
+  ctx.shadowColor = COLOR[other(player.color)].main;
+  ctx.beginPath(); ctx.arc(x, y, R * 0.74, 0, Math.PI*2); ctx.stroke();
+
+  // 중심 섬광
+  ctx.globalAlpha = game.bombFx * game.bombFx * 0.9;
+  ctx.shadowBlur = 50; ctx.shadowColor = '#ffffff';
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath(); ctx.arc(x, y, 26 * game.bombFx, 0, Math.PI*2); ctx.fill();
+  ctx.restore();
+}
+
+function drawBorder() {
+  // ★ 현재 플레이어 색을 화면 테두리로 표시 (전환 시 깜빡임)
+  const c = COLOR[player ? player.color : 'red'];
+  const pulse = game.borderPulse;
+  ctx.save();
+  ctx.lineWidth = 4 + pulse * 10;
+  ctx.strokeStyle = c.main;
+  ctx.globalAlpha = 0.5 + pulse * 0.5;
+  ctx.shadowBlur = 20 + pulse * 30;
+  ctx.shadowColor = c.main;
+  ctx.strokeRect(2, 2, W - 4, H - 4);
+  ctx.restore();
+}
+
+function drawBullet(x, y, w, h, c) {
+  ctx.save();
+  ctx.shadowBlur = 16; ctx.shadowColor = c.main;
+  ctx.fillStyle = c.main;
+  ctx.fillRect(x - w/2, y - h/2, w, h);
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(x - w/4, y - h/2 + 2, w/2, h - 4);
+  ctx.restore();
+}
+
+function drawPlayer() {
+  const c = COLOR[player.color];
+  // 무적 중 깜빡임
+  if (player.inv > 0 && Math.floor(player.inv / 70) % 2 === 0) return;
+
+  ctx.save();
+  ctx.translate(player.x, player.y);
+  ctx.shadowBlur = 20 + player.swapFx * 25;
+  ctx.shadowColor = c.main;
+
+  ctx.beginPath();
+  ctx.moveTo(0, -16);
+  ctx.lineTo(13, 13);
+  ctx.lineTo(0, 7);
+  ctx.lineTo(-13, 13);
+  ctx.closePath();
+  ctx.fillStyle = c.main;
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#ffffff';
+  ctx.stroke();
+
+  // 엔진 불꽃
+  ctx.shadowBlur = 12;
+  ctx.globalAlpha = 0.7 + Math.random() * 0.3;
+  ctx.fillStyle = c.soft;
+  ctx.beginPath();
+  ctx.moveTo(-5, 11); ctx.lineTo(0, 11 + 9 + Math.random()*7); ctx.lineTo(5, 11);
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+
+function drawEnemy(e) {
+  const c = COLOR[e.color];
+  ctx.save();
+  ctx.translate(e.x, e.y);
+  ctx.shadowBlur = 14; ctx.shadowColor = c.main;
+  ctx.fillStyle = e.hit > 0 ? '#ffffff' : c.main;
+  ctx.strokeStyle = c.soft; ctx.lineWidth = 2;
+
+  if (e.type === 'grunt') {
+    ctx.beginPath(); ctx.arc(0, 0, e.w/2, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = c.dark;
+    ctx.beginPath(); ctx.arc(0, 0, e.w/5, 0, Math.PI*2); ctx.fill();
+  } else if (e.type === 'shooter') {
+    ctx.beginPath();
+    ctx.moveTo(0, 15); ctx.lineTo(15, -12); ctx.lineTo(-15, -12);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = c.dark; ctx.fillRect(-4, -6, 8, 12);
+  } else if (e.type === 'guard') {
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const a = i / 6 * Math.PI * 2 + e.t / 420;
+      const px = Math.cos(a) * 14, py = Math.sin(a) * 14;
+      i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+    }
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#08101f'; ctx.fillRect(-7, -2.5, 14, 5);
+    ctx.fillStyle = '#7cf3ff'; ctx.fillRect(-7, -2.5, 14 * Math.max(0, e.hp / e.maxHp), 5);
+  } else { // switcher
+    const r = e.w/2;
+    ctx.beginPath();
+    ctx.moveTo(0, -r); ctx.lineTo(r, 0); ctx.lineTo(0, r); ctx.lineTo(-r, 0);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.shadowBlur = 0;
+    // 곧 색이 바뀐다는 경고 링
+    if (e.swapTimer < 450) {
+      ctx.globalAlpha = 0.5 + 0.5 * Math.sin(e.t / 50);
+      ctx.strokeStyle = COLOR[other(e.color)].main;
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(0, 0, r + 6, 0, Math.PI*2); ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
+function drawBoss(b) {
+  const c  = COLOR[b.color];
+  const t2 = (b.tier === 1);
+  ctx.save();
+  ctx.translate(b.x, b.y);
+  const warn = b.swapWarn && Math.floor(b.t / 90) % 2 === 0;
+  ctx.shadowBlur = t2 ? 34 : 26; ctx.shadowColor = c.main;
+  ctx.fillStyle = b.hit > 0 ? '#ffffff' : (warn ? COLOR[other(b.color)].dark : c.main);
+  ctx.strokeStyle = warn ? COLOR[other(b.color)].main : c.soft;
+  ctx.lineWidth = 3;
+
+  if (!t2) {
+    ctx.beginPath();
+    ctx.moveTo(-66, -20); ctx.lineTo(-40, -37); ctx.lineTo(40, -37);
+    ctx.lineTo(66, -20);  ctx.lineTo(44, 30);   ctx.lineTo(16, 37);
+    ctx.lineTo(-16, 37);  ctx.lineTo(-44, 30);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = c.dark;
+    ctx.fillRect(-26, -12, 52, 22);
+    ctx.fillStyle = '#ffffff';
+    ctx.globalAlpha = .85;
+    ctx.fillRect(-46, 16, 14, 8);
+    ctx.fillRect(32, 16, 14, 8);
+    ctx.globalAlpha = 1;
+  } else {
+    ctx.beginPath();
+    ctx.moveTo(-75, -12); ctx.lineTo(-54, -42); ctx.lineTo(-20, -30);
+    ctx.lineTo(0, -48);   ctx.lineTo(20, -30);  ctx.lineTo(54, -42);
+    ctx.lineTo(75, -12);  ctx.lineTo(52, 32);   ctx.lineTo(22, 43);
+    ctx.lineTo(-22, 43);  ctx.lineTo(-52, 32);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = c.dark;
+    ctx.fillRect(-34, -14, 68, 26);
+    ctx.fillStyle = '#ffffff'; ctx.globalAlpha = .9;
+    ctx.beginPath(); ctx.arc(0, -1, 8 + Math.sin(b.t/220) * 2, 0, Math.PI*2); ctx.fill();
+    ctx.fillRect(-58, 16, 16, 9);
+    ctx.fillRect(42, 16, 16, 9);
+    ctx.globalAlpha = 1;
+  }
+
+  // 무적 방벽
+  if (b.shield) {
+    ctx.shadowBlur = 22; ctx.shadowColor = '#7cf3ff';
+    ctx.strokeStyle = '#7cf3ff'; ctx.lineWidth = 3;
+    ctx.globalAlpha = .5 + .4 * Math.sin(b.t / 150);
+    const R = b.w * 0.74;
+    ctx.beginPath();
+    for (let i = 0; i <= 6; i++) {
+      const a = i / 6 * Math.PI * 2 + b.t / 700;
+      const px = Math.cos(a) * R, py = Math.sin(a) * R * 0.8;
+      i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+    }
+    ctx.closePath(); ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+  ctx.restore();
+
+  // 보스 체력 바
+  ctx.save();
+  const bw = t2 ? 360 : 300, bx = (W - bw)/2, by = PLAY_TOP + 12;
+  ctx.fillStyle = 'rgba(255,255,255,.12)';
+  ctx.fillRect(bx, by, bw, t2 ? 12 : 10);
+  ctx.fillStyle = b.shield ? '#7cf3ff' : c.main;
+  ctx.shadowBlur = 12; ctx.shadowColor = ctx.fillStyle;
+  ctx.fillRect(bx, by, bw * Math.max(0, b.hp / b.maxHp), t2 ? 12 : 10);
+  ctx.shadowBlur = 0;
+  // 페이즈 구분선
+  if (t2) {
+    ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 1;
+    [0.66, 0.33].forEach(g => {
+      ctx.beginPath(); ctx.moveTo(bx + bw*g, by); ctx.lineTo(bx + bw*g, by + 12); ctx.stroke();
+    });
+  }
+  ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 1;
+  ctx.strokeRect(bx, by, bw, t2 ? 12 : 10);
+
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 11px system-ui,sans-serif';
+  if (b.shield) {
+    const left = enemies.reduce((n, e) => n + (e.guardOf === b ? 1 : 0), 0);
+    ctx.fillStyle = '#7cf3ff';
+    ctx.fillText('무적 — 호위기 ' + left + '기 남음', W/2, by - 4);
+  } else {
+    ctx.fillStyle = '#cfd8ff';
+    ctx.fillText(t2 ? ('F I N A L   B O S S   ·   PHASE ' + (b.phase + 1)) : 'B O S S', W/2, by - 4);
+  }
+  ctx.restore();
+}
+
+/* ---------- HUD ---------- */
+function drawHUD() {
+  if (!player) return;
+  const c = COLOR[player.color];
+
+  ctx.save();
+  ctx.fillStyle = 'rgba(5,8,20,.82)';
+  ctx.fillRect(0, 0, W, PLAY_TOP);
+  ctx.strokeStyle = 'rgba(255,255,255,.1)';
+  ctx.beginPath(); ctx.moveTo(0, PLAY_TOP); ctx.lineTo(W, PLAY_TOP); ctx.stroke();
+
+  // 점수
+  ctx.fillStyle = '#e8edff';
+  ctx.font = 'bold 20px system-ui,sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText(String(game.score).padStart(6, '0'), 12, 26);
+  ctx.fillStyle = '#7d88b5';
+  ctx.font = '11px system-ui,sans-serif';
+  ctx.fillText('BEST ' + game.best, 12, 42);
+
+  // 체력
+  ctx.textAlign = 'left';
+  for (let i = 0; i < player.maxHp; i++) {
+    const hx = 12 + i * 18, hy = 50;
+    ctx.beginPath();
+    ctx.arc(hx + 5, hy + 5, 5.5, 0, Math.PI*2);
+    if (i < player.hp) { ctx.fillStyle = '#ff5f7a'; ctx.shadowBlur = 8; ctx.shadowColor = '#ff5f7a'; ctx.fill(); }
+    else { ctx.shadowBlur = 0; ctx.strokeStyle = '#3a4266'; ctx.lineWidth = 2; ctx.stroke(); }
+    ctx.shadowBlur = 0;
+  }
+
+  // 에너지 게이지
+  const gx = 150, gy = 46, gw = W - 150 - 12, gh = 12;
+  ctx.fillStyle = 'rgba(255,255,255,.1)';
+  ctx.fillRect(gx, gy, gw, gh);
+  const ratio = player.energy / MAX_ENERGY;
+  const full  = ratio >= 1;
+  ctx.fillStyle = full ? '#ffd23b' : '#54e6c0';
+  if (full) { ctx.shadowBlur = 14; ctx.shadowColor = '#ffd23b'; }
+  ctx.fillRect(gx, gy, gw * ratio, gh);
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 1;
+  ctx.strokeRect(gx, gy, gw, gh);
+  ctx.fillStyle = full ? '#ffe98a' : '#7d88b5';
+  ctx.font = 'bold 10px system-ui,sans-serif';
+  ctx.fillText(full ? 'F / Enter — 필살기 준비!' : 'ENERGY', gx, gy - 4);
+
+  // 현재 색 표시
+  ctx.textAlign = 'right';
+  ctx.fillStyle = c.main;
+  ctx.shadowBlur = 14; ctx.shadowColor = c.main;
+  ctx.font = 'bold 19px system-ui,sans-serif';
+  ctx.fillText(c.name, W - 12, 26);
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#7d88b5';
+  ctx.font = '11px system-ui,sans-serif';
+  ctx.fillText('SHIFT 전환  ·  WAVE ' + Math.min(game.wave, WAVE_INFO.length), W - 12, 41);
+  ctx.restore();
+}
+
+/* ---------- 오버레이 화면들 ---------- */
+function panel(a) {
+  ctx.fillStyle = 'rgba(4,6,16,' + a + ')';
+  ctx.fillRect(0, 0, W, H);
+}
+
+function drawTitle() {
+  ctx.save();
+  ctx.textAlign = 'center';
+
+  ctx.shadowBlur = 30; ctx.shadowColor = COLOR.red.main;
+  ctx.fillStyle = COLOR.red.main;
+  ctx.font = 'bold 46px system-ui,sans-serif';
+  ctx.fillText('색깔 전환', W/2, 168);
+  ctx.shadowColor = COLOR.blue.main;
+  ctx.fillStyle = COLOR.blue.main;
+  ctx.fillText('슈팅', W/2, 222);
+  ctx.shadowBlur = 0;
+
+  ctx.fillStyle = '#8d99c9';
+  ctx.font = '13px system-ui,sans-serif';
+  ctx.fillText('C O L O R   S H I F T   S H O O T E R', W/2, 252);
+
+  ctx.font = 'bold 15px system-ui,sans-serif';
+  ctx.fillStyle = COLOR.red.soft;
+  ctx.fillText('공격은 반대 색 — 다른 색 적만 파괴된다', W/2, 320);
+  ctx.fillStyle = COLOR.blue.soft;
+  ctx.fillText('방어는 같은 색 — 같은 색 총알은 통과한다', W/2, 348);
+
+  ctx.fillStyle = '#6f7aa8';
+  ctx.font = '13px system-ui,sans-serif';
+  const lines = [
+    '← → ↑ ↓ / WASD   이동',
+    'Space   발사        Shift(또는 우클릭)   색 전환',
+    'F 또는 Enter   필살기        R   재시작'
+  ];
+  lines.forEach((t, i) => ctx.fillText(t, W/2, 416 + i * 24));
+
+  ctx.globalAlpha = 0.5 + 0.5 * Math.sin(game.time / 300);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 18px system-ui,sans-serif';
+  ctx.fillText(touchMode ? '화면을 탭하면 시작' : '화면을 클릭하거나 SPACE 를 눌러 시작', W/2, 548);
+  ctx.globalAlpha = 1;
+
+  ctx.fillStyle = '#4c5578';
+  ctx.font = '12px system-ui,sans-serif';
+  ctx.fillText('BEST  ' + game.best, W/2, 606);
+  ctx.restore();
+}
+
+function drawWaveBanner() {
+  const info = WAVE_INFO[game.wave - 1];
+  if (!info) return;
+  const p = 1 - Math.abs(game.waveTimer - 1000) / 1000;   // 0→1→0
+  ctx.save();
+  ctx.globalAlpha = Math.max(0, Math.min(1, p * 1.6));
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(4,6,16,.55)';
+  ctx.fillRect(0, H/2 - 66, W, 132);
+  ctx.fillStyle = '#ffffff';
+  ctx.shadowBlur = 24; ctx.shadowColor = COLOR[player.color].main;
+  ctx.font = 'bold 40px system-ui,sans-serif';
+  ctx.fillText(info.title, W/2, H/2 - 6);
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = COLOR[player.color].soft;
+  ctx.font = 'bold 15px system-ui,sans-serif';
+  ctx.fillText(info.sub, W/2, H/2 + 30);
+  ctx.restore();
+}
+
+function drawOver() {
+  panel(.78);
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.fillStyle = COLOR.red.main;
+  ctx.shadowBlur = 26; ctx.shadowColor = COLOR.red.main;
+  ctx.font = 'bold 48px system-ui,sans-serif';
+  ctx.fillText('GAME OVER', W/2, H/2 - 40);
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#e8edff';
+  ctx.font = 'bold 26px system-ui,sans-serif';
+  ctx.fillText('SCORE  ' + game.score, W/2, H/2 + 16);
+  ctx.fillStyle = '#7d88b5';
+  ctx.font = '14px system-ui,sans-serif';
+  ctx.fillText('BEST  ' + game.best + '   ·   WAVE ' + Math.min(game.wave, WAVE_INFO.length) + ' 도달', W/2, H/2 + 46);
+  ctx.globalAlpha = 0.5 + 0.5 * Math.sin(game.time / 280);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 17px system-ui,sans-serif';
+  ctx.fillText(touchMode ? '화면을 탭해서 다시 시작' : 'R 키를 눌러 다시 시작', W/2, H/2 + 108);
+  ctx.restore();
+}
+
+function drawClear() {
+  panel(.78);
+  ctx.save();
+  ctx.textAlign = 'center';
+  const t = game.time / 400;
+  ctx.fillStyle = Math.floor(t) % 2 ? COLOR.blue.main : COLOR.red.main;
+  ctx.shadowBlur = 30; ctx.shadowColor = ctx.fillStyle;
+  ctx.font = 'bold 46px system-ui,sans-serif';
+  ctx.fillText('STAGE CLEAR', W/2, H/2 - 40);
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#e8edff';
+  ctx.font = 'bold 26px system-ui,sans-serif';
+  ctx.fillText('SCORE  ' + game.score, W/2, H/2 + 16);
+  ctx.fillStyle = '#7d88b5';
+  ctx.font = '14px system-ui,sans-serif';
+  ctx.fillText('BEST  ' + game.best, W/2, H/2 + 46);
+  ctx.globalAlpha = 0.5 + 0.5 * Math.sin(game.time / 280);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 17px system-ui,sans-serif';
+  ctx.fillText(touchMode ? '화면을 탭해서 다시 시작' : 'R 키를 눌러 다시 시작', W/2, H/2 + 108);
+  ctx.restore();
+}
+
+/* ============================================================
+   9. 메인 루프
+   ============================================================ */
+player = makePlayer();
+bullets = []; ebullets = []; enemies = []; particles = [];
+
+let last = performance.now();
+function loop(now) {
+  let dt = now - last;
+  last = now;
+  if (dt > 50) dt = 50;              // 탭 전환 후 폭주 방지
+  const k = dt / 16.6667;            // 60fps 기준 배율
+
+  update(dt, k);
+  draw();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>
