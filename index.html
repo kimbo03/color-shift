@@ -58,15 +58,15 @@
   /* ---------- 히어로 ---------- */
   header{ padding:86px 0 70px; text-align:center; }
   h1{
-    font-size:clamp(44px,9vw,78px);
-    font-weight:900; line-height:1.08; letter-spacing:-1px;
+    font-size:clamp(34px,7.4vw,70px);
+    font-weight:900; line-height:1.06; letter-spacing:.01em;
   }
   h1 .r{ color:var(--red);  text-shadow:0 0 34px rgba(255,59,92,.55); display:block; }
   h1 .b{ color:var(--blue); text-shadow:0 0 34px rgba(59,140,255,.55); display:block; }
   .sub{
     margin-top:18px;
-    color:var(--muted); font-size:13px;
-    letter-spacing:.42em; text-indent:.42em;
+    color:var(--muted); font-size:14px; font-weight:700;
+    letter-spacing:.34em; text-indent:.34em;
   }
   .tagline{
     margin:30px auto 0; max-width:620px;
@@ -180,7 +180,7 @@
   /* ---------- 조작법 ---------- */
   .keys{ margin-top:30px; display:grid; gap:10px; }
   .keyrow{
-    display:grid; grid-template-columns:150px 1fr; gap:18px; align-items:center;
+    display:grid; grid-template-columns:160px 1fr; gap:18px; align-items:center;
     background:var(--panel);
     border:1px solid var(--line); border-radius:11px;
     padding:14px 20px;
@@ -189,6 +189,7 @@
     .keyrow{ grid-template-columns:1fr; gap:8px; }
   }
   .keycaps{ display:flex; gap:6px; flex-wrap:wrap; }
+  .kgroup{ display:flex; gap:6px; }   /* 묶음 단위로 줄을 넘긴다 */
   kbd{
     display:inline-block; min-width:30px; text-align:center;
     padding:5px 9px; border-radius:6px;
@@ -431,8 +432,8 @@
 
 <header>
   <div class="wrap">
-    <h1><span class="r">색깔 전환</span><span class="b">슈팅</span></h1>
-    <p class="sub">COLOR SHIFT SHOOTER</p>
+    <h1><span class="r">COLOR SHIFT</span><span class="b">SHOOTER</span></h1>
+    <p class="sub">색깔 전환 슈팅</p>
     <p class="tagline">
       빨강과 파랑을 번갈아 쓰며 싸우는 슈팅 게임입니다.
       적은 <b>반대 색으로</b> 잡고, 날아오는 탄은 <i>같은 색으로</i> 흘려보냅니다.
@@ -463,7 +464,7 @@
       <div class="card c-gold">
         <h3>에너지와 필살기</h3>
         <p>같은 색 탄을 흡수할 때마다 게이지가 한 칸씩 차고, <span class="k">20칸을 채우면</span> 필살기를 쓸 수 있습니다.</p>
-        <p><kbd>F</kbd> 를 누르면 화면의 적탄이 전부 점수로 바뀌고, 색과 상관없이 모든 적에게 3 데미지가 들어갑니다.</p>
+        <p><kbd>F</kbd> 나 <kbd>Enter</kbd> 를 누르면 화면의 적탄이 전부 점수로 바뀌고, 색과 상관없이 모든 적에게 3 데미지가 들어갑니다.</p>
       </div>
       <div class="card c-cyan">
         <h3>전환의 시차</h3>
@@ -555,7 +556,10 @@
 
     <div class="keys">
       <div class="keyrow">
-        <div class="keycaps"><kbd>←</kbd><kbd>↑</kbd><kbd>↓</kbd><kbd>→</kbd><kbd>WASD</kbd></div>
+        <div class="keycaps">
+          <span class="kgroup"><kbd>←</kbd><kbd>↑</kbd><kbd>↓</kbd><kbd>→</kbd></span>
+          <span class="kgroup"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span>
+        </div>
         <span>이동</span>
       </div>
       <div class="keyrow">
