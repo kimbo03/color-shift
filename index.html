@@ -95,12 +95,8 @@
 
   /* ---------- 섹션 공통 ---------- */
   section{ padding:64px 0; }
-  .eyebrow{
-    color:var(--dim); font-size:11px; font-weight:800;
-    letter-spacing:.3em; text-transform:uppercase;
-  }
   h2{
-    margin:8px 0 8px;
+    margin:0 0 8px;
     font-size:clamp(25px,4.4vw,34px); font-weight:800; letter-spacing:-.5px;
   }
   .lead{ color:var(--muted); font-size:15px; max-width:640px; }
@@ -348,7 +344,7 @@
     border-radius:16px; padding:30px 28px;
     box-shadow:0 0 0 1px rgba(255,59,92,.14), 0 30px 90px rgba(0,0,0,.7);
   }
-  .modal h3{ margin:6px 0 6px; font-size:23px; font-weight:800; letter-spacing:-.3px; }
+  .modal h3{ margin:0 0 6px; font-size:23px; font-weight:800; letter-spacing:-.3px; }
   .modal-lead{ color:var(--muted); font-size:13.5px; }
   .fields{ margin-top:20px; display:grid; grid-template-columns:1fr 1fr; gap:12px; }
   .field{ display:flex; flex-direction:column; gap:6px; grid-column:span 2; }
@@ -438,9 +434,8 @@
     <h1><span class="r">색깔 전환</span><span class="b">슈팅</span></h1>
     <p class="sub">COLOR SHIFT SHOOTER</p>
     <p class="tagline">
-      빨강과 파랑, 두 색을 번갈아 쓰며 싸우는 종스크롤 슈팅.
-      <b>공격은 반대 색으로</b>, <i>방어는 같은 색으로</i> —
-      쏘는 순간과 맞는 순간, 내 색이 무엇인지가 전부를 결정한다.
+      빨강과 파랑을 번갈아 쓰며 싸우는 슈팅 게임입니다.
+      적은 <b>반대 색으로</b> 잡고, 날아오는 탄은 <i>같은 색으로</i> 흘려보냅니다.
     </p>
     <div class="cta">
       <a href="#play" class="btn primary">지금 플레이</a>
@@ -451,30 +446,29 @@
 
 <section id="rules">
   <div class="wrap">
-    <p class="eyebrow">Core Rules</p>
-    <h2>색이 곧 무기이자 방패다</h2>
-    <p class="lead">규칙은 네 줄이면 끝난다. 하지만 이 네 줄이 서로 맞물리면서, 공격하려고 바꾼 색이 그대로 방어 구멍이 된다.</p>
+    <h2>규칙은 네 가지</h2>
+    <p class="lead">적을 잡으려고 색을 바꾸면 그 색이 방어에도 그대로 영향을 줍니다. 그래서 언제 바꿀지가 중요합니다.</p>
 
     <div class="cards">
       <div class="card c-red">
         <h3>공격은 반대 색</h3>
-        <p>내 총알과 적의 색이 <span class="k">다를 때만</span> 적이 파괴된다.</p>
-        <p>같은 색에 쏘면 총알이 흡수되어 사라지고 적은 멀쩡하다. 빨간 적을 잡으려면 파랑으로 바꿔서 쏴야 한다.</p>
+        <p>내 총알과 적의 색이 <span class="k">다를 때만</span> 적이 파괴됩니다.</p>
+        <p>같은 색에 쏘면 총알만 사라지고 적은 멀쩡합니다. 빨간 적을 잡으려면 파랑으로 바꿔서 쏴야 합니다.</p>
       </div>
       <div class="card c-blue">
         <h3>방어는 같은 색</h3>
-        <p>날아오는 적탄이 나와 <span class="k">같은 색이면 몸을 통과</span>한다. 피해도 없고, 오히려 에너지가 찬다.</p>
-        <p>색이 다르면 그대로 체력이 깎인다. 체력은 5칸, 피격 후 약 1.1초간 무적이다.</p>
+        <p>날아오는 적탄이 나와 <span class="k">같은 색이면 몸을 통과</span>합니다. 피해도 없고 에너지도 찹니다.</p>
+        <p>색이 다르면 체력이 깎입니다. 체력은 5칸이고, 맞은 뒤 약 1.1초간 무적입니다.</p>
       </div>
       <div class="card c-gold">
         <h3>에너지와 필살기</h3>
-        <p>같은 색 탄을 흡수할 때마다 게이지가 한 칸씩 차고, <span class="k">20칸을 채우면</span> 필살기를 쓸 수 있다.</p>
-        <p><kbd>Z</kbd> 를 누르면 화면의 적탄이 전부 점수로 바뀌고, 색과 무관하게 모든 적에게 3 데미지가 들어간다.</p>
+        <p>같은 색 탄을 흡수할 때마다 게이지가 한 칸씩 차고, <span class="k">20칸을 채우면</span> 필살기를 쓸 수 있습니다.</p>
+        <p><kbd>F</kbd> 를 누르면 화면의 적탄이 전부 점수로 바뀌고, 색과 상관없이 모든 적에게 3 데미지가 들어갑니다.</p>
       </div>
       <div class="card c-cyan">
         <h3>전환의 시차</h3>
-        <p><kbd>Shift</kbd> 로 언제든 색을 바꿀 수 있지만, <span class="k">이미 발사된 총알은 쏜 순간의 색</span>을 그대로 유지한다.</p>
-        <p>그래서 색을 바꾸는 순간에는 화면에 두 색의 내 총알이 동시에 남는다. 이 시차를 읽는 게 이 게임의 핵심이다.</p>
+        <p><kbd>Shift</kbd> 로 언제든 색을 바꿀 수 있지만, <span class="k">이미 발사된 총알은 쏜 순간의 색</span>을 유지합니다.</p>
+        <p>그래서 색을 바꾼 직후에는 화면에 두 색의 총알이 같이 남습니다.</p>
       </div>
     </div>
   </div>
@@ -482,7 +476,6 @@
 
 <section id="play">
   <div class="wrap">
-    <p class="eyebrow">Play</p>
     <h2>바로 플레이하기</h2>
     <p class="lead">아래 화면에서 곧바로 플레이할 수 있습니다. 키보드 조작이 안 되면 게임 화면을 한 번 클릭해 주세요.</p>
 
@@ -503,13 +496,12 @@
 
 <section id="rank">
   <div class="wrap">
-    <p class="eyebrow">Ranking</p>
     <h2>순위표</h2>
     <p class="lead">
       게임이 끝나면 점수와 도달 스테이지가 자동으로 기록됩니다.
-      여러 번 플레이해도 <b>가장 좋은 기록 하나</b>만 남습니다 — 점수가 높은 판이 우선이고,
+      여러 번 해도 <b>가장 좋은 기록 하나</b>만 남습니다. 점수가 높은 판이 우선이고,
       점수가 같으면 더 멀리 간 판이 남습니다.
-      개인은 <b>상위 30명</b>, 반은 <b>상위 10개 반</b>까지 보여주고, 그 아래면 내 줄을 따로 붙여 줍니다.
+      개인은 <b>상위 30명</b>, 반은 <b>상위 10개 반</b>까지 보이고, 그 아래면 내 순위가 따로 붙습니다.
     </p>
 
     <div class="rank-mine" id="rankMine"></div>
@@ -559,7 +551,6 @@
 
 <section id="controls">
   <div class="wrap">
-    <p class="eyebrow">Controls</p>
     <h2>조작법</h2>
 
     <div class="keys">
@@ -569,23 +560,23 @@
       </div>
       <div class="keyrow">
         <div class="keycaps"><kbd>Space</kbd></div>
-        <span>발사 — 0.2초 쿨타임이 있어 연사 속도는 고정된다</span>
+        <span>발사. 0.2초 쿨타임이 있어 연사 속도는 고정입니다</span>
       </div>
       <div class="keyrow">
         <div class="keycaps"><kbd>Shift</kbd><kbd>우클릭</kbd></div>
-        <span>색 전환 — 빨강 ↔ 파랑, 화면 테두리 색으로 현재 색을 확인</span>
+        <span>색 전환. 화면 테두리 색으로 지금 내 색을 알 수 있습니다</span>
       </div>
       <div class="keyrow">
         <div class="keycaps"><kbd>F</kbd><kbd>Enter</kbd></div>
-        <span>필살기 — 에너지 게이지가 가득 찼을 때만 발동</span>
+        <span>필살기. 에너지가 가득 찼을 때만 쓸 수 있습니다</span>
       </div>
       <div class="keyrow">
         <div class="keycaps"><kbd>R</kbd></div>
-        <span>재시작 — 게임 오버 또는 클리어 후</span>
+        <span>재시작. 게임 오버나 클리어 후에 누릅니다</span>
       </div>
       <div class="keyrow">
         <div class="keycaps"><kbd>터치</kbd></div>
-        <span>하단 게임패드의 스틱으로 이동, 발사 · 색 전환 · 필살기 버튼으로 조작 (화면을 직접 누른 채 움직여도 됨)</span>
+        <span>하단 게임패드의 스틱으로 이동하고, 발사 · 색 전환 · 필살기 버튼으로 조작합니다</span>
       </div>
     </div>
   </div>
@@ -593,9 +584,8 @@
 
 <section id="foes">
   <div class="wrap">
-    <p class="eyebrow">Enemies</p>
     <h2>적의 종류</h2>
-    <p class="lead">모양으로 행동을 구분한다. 색은 언제든 바뀔 수 있으니 모양을 먼저 보고 색을 나중에 본다.</p>
+    <p class="lead">색은 도중에 바뀌어도 모양은 바뀌지 않습니다. 모양으로 먼저 구분하세요.</p>
 
     <div class="foes">
       <div class="foe">
@@ -604,7 +594,7 @@
           <circle cx="23" cy="23" r="6" fill="#5a1024"/>
         </svg>
         <h4>그런트</h4>
-        <p>좌우로 흔들리며 내려온다. 체력 1, 사격은 하지 않는다.</p>
+        <p>좌우로 흔들리며 내려옵니다. 체력 1, 사격은 하지 않습니다.</p>
       </div>
       <div class="foe">
         <svg width="46" height="46" viewBox="0 0 46 46">
@@ -612,7 +602,7 @@
           <rect x="19" y="17" width="8" height="12" fill="#0e2352"/>
         </svg>
         <h4>슈터</h4>
-        <p>플레이어를 조준해 쏜다. 웨이브 7의 강화형은 3방향으로 퍼뜨린다.</p>
+        <p>플레이어를 조준해 쏩니다. 웨이브 7의 강화형은 3방향으로 퍼뜨립니다.</p>
       </div>
       <div class="foe">
         <svg width="46" height="46" viewBox="0 0 46 46">
@@ -620,7 +610,7 @@
           <circle cx="23" cy="23" r="20" fill="none" stroke="#3b8cff" stroke-width="2" opacity=".75"/>
         </svg>
         <h4>스위처</h4>
-        <p>1.5초마다 스스로 색을 바꾼다. 바뀌기 직전에 반대 색 경고 링이 뜬다.</p>
+        <p>1.5초마다 스스로 색을 바꿉니다. 바뀌기 직전에 반대 색 경고 링이 뜹니다.</p>
       </div>
       <div class="foe">
         <svg width="46" height="46" viewBox="0 0 46 46">
@@ -628,7 +618,7 @@
           <rect x="16" y="21" width="14" height="5" fill="#7cf3ff"/>
         </svg>
         <h4>호위기</h4>
-        <p>최종 보스 주위를 돈다. 전부 격추해야 보스의 무적 방벽이 풀린다.</p>
+        <p>최종 보스 주위를 돕니다. 전부 격추해야 보스의 무적 방벽이 풀립니다.</p>
       </div>
     </div>
   </div>
@@ -636,27 +626,26 @@
 
 <section id="waves">
   <div class="wrap">
-    <p class="eyebrow">Stage</p>
     <h2>8개의 웨이브</h2>
-    <p class="lead">웨이브가 넘어갈수록 규칙이 하나씩 추가된다. 보스 직전인 웨이브 6과 최종 보스 시작 시에는 체력이 완전히 회복된다.</p>
+    <p class="lead">웨이브가 넘어갈 때마다 규칙이 하나씩 늘어납니다. 웨이브 6과 최종 보스가 시작될 때는 체력이 모두 회복됩니다.</p>
 
     <div class="waves">
-      <div class="wave"><div class="name">WAVE 1</div><div class="desc">같은 색 적은 총알이 튕긴다</div></div>
-      <div class="wave"><div class="name">WAVE 2</div><div class="desc">두 색이 섞여 나온다</div></div>
-      <div class="wave"><div class="name">WAVE 3</div><div class="desc">같은 색 총알은 통과 · 에너지 충전</div></div>
-      <div class="wave"><div class="name">WAVE 4</div><div class="desc">스스로 색을 바꾸는 적</div></div>
-      <div class="wave boss"><div class="name">BOSS</div><div class="desc">1~3회 공격마다 색을 바꾼다</div></div>
-      <div class="wave"><div class="name">WAVE 6</div><div class="desc">강화 편대 — 체력 · 속도 · 탄속 상승</div></div>
-      <div class="wave"><div class="name">WAVE 7</div><div class="desc">강화 변색기 편대 — 3방향 사격</div></div>
-      <div class="wave final"><div class="name">FINAL BOSS</div><div class="desc">무적 방벽 · 호위기 · 양색 탄막</div></div>
+      <div class="wave"><div class="name">WAVE 1</div><div class="desc">같은 색 적은 총알이 튕깁니다</div></div>
+      <div class="wave"><div class="name">WAVE 2</div><div class="desc">두 색이 섞여 나옵니다</div></div>
+      <div class="wave"><div class="name">WAVE 3</div><div class="desc">같은 색 총알은 통과하고 에너지가 찹니다</div></div>
+      <div class="wave"><div class="name">WAVE 4</div><div class="desc">스스로 색을 바꾸는 적이 나옵니다</div></div>
+      <div class="wave boss"><div class="name">BOSS</div><div class="desc">1~3회 공격마다 색을 바꿉니다</div></div>
+      <div class="wave"><div class="name">WAVE 6</div><div class="desc">강화 편대. 체력과 속도, 탄속이 올라갑니다</div></div>
+      <div class="wave"><div class="name">WAVE 7</div><div class="desc">강화 변색기 편대. 3방향으로 쏩니다</div></div>
+      <div class="wave final"><div class="name">FINAL BOSS</div><div class="desc">무적 방벽과 호위기, 양쪽 색 탄막이 나옵니다</div></div>
     </div>
   </div>
 </section>
 
 <footer>
   <div class="wrap">
-    <p>COLOR SHIFT SHOOTER — 캔버스로 그린 단일 HTML 게임</p>
-    <p><code>index.html</code> 과 <code>color-shift-shooter.html</code> 을 같은 폴더에 두면 그대로 동작합니다.</p>
+    <p>COLOR SHIFT SHOOTER</p>
+    <p>학교 바이브코딩 활동으로 만든 게임입니다.</p>
   </div>
 </footer>
 
@@ -734,7 +723,6 @@ document.querySelectorAll('a[href="#play"]').forEach(a => {
 <!-- 플레이어 정보 입력 -->
 <div class="backdrop" id="regBackdrop">
   <form class="modal" id="regForm" novalidate>
-    <p class="eyebrow">Player</p>
     <h3 id="regTitle">플레이어 정보 입력</h3>
     <p class="modal-lead" id="regLead">순위표에 기록을 남기려면 아래 정보를 입력해 주세요.</p>
 
