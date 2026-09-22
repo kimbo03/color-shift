@@ -409,6 +409,96 @@
     box-shadow:0 0 34px rgba(255,59,92,.22), 0 18px 50px rgba(0,0,0,.6);
     color:var(--red-soft);
   }
+
+  /* ============================================================
+     모바일 — 데스크톱 값을 그대로 쓰면 화면이 확대된 것처럼 보인다.
+     여백 · 글자 크기를 줄이고, 터치에서 쓸 일 없는 것은 감춘다.
+     ============================================================ */
+  @media (max-width:560px){
+    .wrap{ padding:0 16px; }
+    header{ padding:48px 0 40px; }
+    section{ padding:40px 0; }
+    footer{ margin-top:24px; padding:28px 0 40px; }
+
+    .sub{ margin-top:14px; font-size:12.5px; letter-spacing:.2em; text-indent:.2em; }
+    .tagline{ margin-top:22px; font-size:15px; }
+    .cta{ margin-top:28px; gap:10px; }
+    .btn{ padding:12px 22px; font-size:14px; }
+
+    h2{ font-size:22px; }
+    .lead{ font-size:14px; }
+
+    /* 규칙 카드 */
+    .cards{ margin-top:22px; gap:12px; }
+    .card{ padding:18px 18px 18px 22px; }
+    .card h3{ font-size:16.5px; margin-bottom:8px; }
+    .card p{ font-size:14px; }
+    .card p + p{ margin-top:8px; }
+
+    /* 플레이 */
+    .stage-frame{ margin-top:22px; }
+    .stage-tools{ margin-top:12px; gap:8px; }
+    .note{ margin-top:12px; font-size:12px; }
+    .tool{ padding:9px 15px; font-size:12.5px; }
+
+    /* 순위표 */
+    .rank-mine{ margin-top:22px; padding:16px 16px; }
+    .mine-nick{ font-size:18px; }
+    .mine-meta{ font-size:12px; }
+    .mine-stats{ margin-top:12px; gap:8px; }
+    .stat{ padding:10px 11px; }
+    .stat .sv{ font-size:17px; }
+    .rank-bar{ margin-top:16px; }
+    .rtab{ padding:9px 15px; font-size:13px; }
+
+    /* 표가 칸보다 넓어 안에서 가로로 스크롤되던 것을 없앤다 */
+    .rank-table{ margin-top:12px; }
+    .rank-table table{ min-width:0; }
+    .rank-table th{ padding:10px 8px; font-size:10.5px; letter-spacing:.08em; }
+    .rank-table td{ padding:11px 8px; font-size:13.5px; }
+    .rank-table th.rk, .rank-table td.rk{ width:40px; }
+    .rank-table .tag{ margin-left:6px; padding:1px 6px; font-size:10px; }
+
+    /* 조작법 · 적 · 웨이브 */
+    .keys, .foes, .waves{ margin-top:22px; }
+    .keyrow{ padding:12px 16px; }
+    .keyrow span{ font-size:13.5px; }
+    .foes{ gap:10px; }
+    .foe{ padding:16px 12px; }
+    .foe h4{ font-size:13.5px; }
+    .foe p{ font-size:12.5px; }
+    .wave{ padding:12px 16px; }
+    .wave .desc{ font-size:13.5px; }
+
+    /* 정보 입력 창 */
+    .modal{ padding:24px 20px; }
+    .modal h3{ font-size:21px; }
+  }
+
+  @media (pointer:coarse){
+    /* 터치에서는 쓸 일이 없어 툴바만 두 줄로 만든다 */
+    #btnFocus, #btnReload{ display:none; }
+    /* 터치 조작 설명을 맨 위로 */
+    .keyrow.touch{
+      order:-1;
+      border-color:rgba(59,140,255,.4);
+      background:rgba(14,35,82,.34);
+    }
+  }
+
+  /* 프레임 높이를 게임 내용(화면 + 게임패드)에 맞춰 빈 공간을 없앤다 */
+  @media (pointer:coarse) and (max-width:560px){
+    .stage-frame{
+      /* 게임 화면(가로의 1.5배) + 게임패드(가로의 0.268배) + 여백 20px.
+         게임패드가 폭에 따라 같이 커지므로 고정값이 아니라 비율로 잡는다. */
+      --fw:min(100vw - 32px, 520px);
+      width:var(--fw);
+      aspect-ratio:auto;
+      height:calc((var(--fw) - 12px) * 1.768 + 20px);
+      max-height:78vh;
+      max-height:78svh;    /* 주소창을 뺀 실제 높이 (지원하는 브라우저에서) */
+    }
+  }
 </style>
 </head>
 <body>
@@ -578,7 +668,7 @@
         <div class="keycaps"><kbd>R</kbd></div>
         <span>재시작. 게임 오버나 클리어 후에 누릅니다</span>
       </div>
-      <div class="keyrow">
+      <div class="keyrow touch">
         <div class="keycaps"><kbd>터치</kbd></div>
         <span>하단 게임패드의 스틱으로 이동하고, 발사 · 색 전환 · 필살기 버튼으로 조작합니다</span>
       </div>
