@@ -44,7 +44,7 @@ const LOCAL_ID_KEY = 'css_identity_v1';  // 로컬 모드에서 쓰는 학번·�
 const IDENT_KEY    = 'css_ident_saved';  // 학번·이름을 이미 보냈는지 표시
 const GUEST_KEY    = 'css_guest_v1';     // 게스트로 진행하기를 골랐는지
 const CACHE_KEY    = 'css_board_v1';     // 순위표 캐시
-const MAX_STAGE    = 8;
+const MAX_STAGE    = 11;   // 게임의 웨이브 수 (마지막이 FINAL BOSS)
 
 /* 반은 학년까지 묶어야 1학년 3반과 2학년 3반이 섞이지 않는다 */
 function classIdOf(p)    { return Number(p.grade) + '-' + Number(p.klass); }
