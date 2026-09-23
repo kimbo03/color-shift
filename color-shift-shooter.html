@@ -268,17 +268,21 @@ function start() { reset(); }
    3. 웨이브 구성
    ============================================================ */
 const WAVE_INFO = [
+  /* 1부 · 기본기 */
   { title:'WAVE 1', sub:'같은 색 적은 총알이 튕긴다' },
   { title:'WAVE 2', sub:'두 색이 섞여 나온다' },
   { title:'WAVE 3', sub:'같은 색 총알은 통과 · 에너지 충전' },
   { title:'WAVE 4', sub:'스스로 색을 바꾸는 적' },
-  { title:'BOSS',   sub:'1~3회 공격마다 색을 바꾼다' },
+  { title:'BOSS 1', sub:'1~3회 공격마다 색을 바꾼다' },
+  /* 2부 · 새로운 적 */
   { title:'WAVE 6', sub:'부서지면 반대 색 둘로 갈라지는 적' },
   { title:'WAVE 7', sub:'노려보다가 돌진하는 적' },
-  { title:'WAVE 8', sub:'강화 편대 — 체력·속도·탄속 상승' },
-  { title:'WAVE 9', sub:'강화 변색기 편대 — 3방향 사격' },
-  { title:'WAVE 10', sub:'지금까지 나온 적이 모두 나온다' },
-  { title:'FINAL BOSS', sub:'무적 방벽 · 호위기 · 양색 탄막' }
+  { title:'BOSS 2', sub:'무적 방벽 · 호위기 · 가로지르는 원반' },
+  /* 3부 · 강화 */
+  { title:'WAVE 9', sub:'강화 편대 — 체력·속도·탄속 상승' },
+  { title:'WAVE 10', sub:'강화 변색기 편대 — 3방향 사격' },
+  { title:'WAVE 11', sub:'지금까지 나온 적이 모두 나온다' },
+  { title:'FINAL BOSS', sub:'부하를 부르는 동안 무적 · 돌아올수록 거세진다' }
 ];
 
 function buildSpawns(w) {
@@ -334,6 +338,8 @@ function buildSpawns(w) {
       t += 500;
     }
   } else if (w === 8) {
+    list.push({ t:900, type:'boss2', color:'red', x:W/2 });
+  } else if (w === 9) {
     // 강화된 1~2웨이브 재구성
     for (let i = 0; i < 20; i++) {
       const c = Math.random() < .5 ? 'red' : 'blue';
@@ -341,7 +347,7 @@ function buildSpawns(w) {
       if (i % 5 === 4) list.push({ t:t + 130, type:'grunt', color:other(c), x:rx(), hard:true });
       t += 380;
     }
-  } else if (w === 9) {
+  } else if (w === 10) {
     // 강화된 3~4웨이브 재구성
     for (let i = 0; i < 22; i++) {
       const c = Math.random() < .5 ? 'red' : 'blue';
@@ -351,7 +357,7 @@ function buildSpawns(w) {
       list.push({ t:t, type:type, color:c, x:rx(), hard:true });
       t += 340;
     }
-  } else if (w === 10) {
+  } else if (w === 11) {
     // 혼성 편대 — 지금까지 나온 적이 모두 나온다. 대신 수와 간격을 늦춰 번잡하지 않게
     const kinds = ['grunt', 'shooter', 'splitter', 'grunt', 'switcher', 'diver'];
     for (let i = 0; i < 18; i++) {
@@ -359,8 +365,8 @@ function buildSpawns(w) {
       list.push({ t:t, type:kinds[i % kinds.length], color:c, x:rx(), hard:true });
       t += 480;
     }
-  } else if (w === 11) {
-    list.push({ t:900, type:'boss2', color:'red', x:W/2 });
+  } else if (w === 12) {
+    list.push({ t:900, type:'boss3', color:'blue', x:W/2 });
   }
   return list;
 }
@@ -373,8 +379,8 @@ function nextWave() {
   game.spawnClock = 0;
   game.waveTimer  = 2000;
   game.state = 'wave';
-  // 체크포인트 — 첫 보스 직후 · 강화 편대 시작 · 최종 보스에서 체력을 완전히 회복
-  if ((game.wave === 6 || game.wave === 8 || game.wave === 11) && player) player.hp = player.maxHp;
+  // 체크포인트 — 2부 · 3부가 시작될 때와 최종 보스에서 체력을 완전히 회복
+  if ((game.wave === 6 || game.wave === 9 || game.wave === 12) && player) player.hp = player.maxHp;
 }
 
 /* ============================================================
@@ -383,6 +389,7 @@ function nextWave() {
 function spawnEnemy(s) {
   if (s.type === 'boss')  { spawnBoss(0); return; }
   if (s.type === 'boss2') { spawnBoss(1); return; }
+  if (s.type === 'boss3') { spawnBoss(2); return; }
 
   const hard = !!s.hard;
   const e = {
@@ -420,7 +427,7 @@ function splitInto(e) {
   const c = other(e.color);
   for (const dir of [-1, 1]) {
     enemies.push({
-      type:'shard', color:c, hard:e.hard,
+      type:'shard', color:c, hard:e.hard, squadOf:e.squadOf,
       x:e.x + dir * 8, y:e.y, w:18, h:18,
       hp:1, t:0, hit:0,
       vx:dir * (e.hard ? 2.2 : 1.8),
@@ -455,22 +462,46 @@ function updateDiver(e, dt, k) {
 }
 
 function spawnBoss(tier) {
-  const t2 = (tier === 1);
+  const spec = [
+    { y:-90,  w:132, h:74, hp:50,  fire:1600, home:140, color:'red'  },   // 보스 1
+    { y:-110, w:150, h:86, hp:140, fire:1200, home:132, color:'red'  },   // 보스 2
+    { y:-120, w:168, h:94, hp:240, fire:1000, home:128, color:'blue' }    // 최종 보스
+  ][tier];
   boss = {
     type:'boss', tier:tier,
-    x:W/2, y:(t2 ? -110 : -90),
-    w:(t2 ? 150 : 132), h:(t2 ? 86 : 74),
-    color:'red',
-    hp:(t2 ? 140 : 50), maxHp:(t2 ? 140 : 50),
-    t:0, hit:0, entering:true,
+    x:W/2, y:spec.y, w:spec.w, h:spec.h,
+    color:spec.color,
+    hp:spec.hp, maxHp:spec.hp,
+    t:0, hit:0, entering:true, homeY:spec.home,
     shotsLeft:1 + Math.floor(Math.random() * 3),   // ★ 1~3회 공격 후 변신
     swapWarn:0,
-    fireTimer:(t2 ? 1200 : 1600),
+    fireTimer:spec.fire,
     pattern:0, phase:0, shield:false, lastKind:'',
-    gates:(t2 ? [0.66, 0.33] : []),                // 무적 방벽 발동 체력 구간
+    gates:(tier === 1 ? [0.66, 0.33] : []),         // 보스 2 — 무적 방벽 발동 체력 구간
+    driftTimer:3000,                                // 보스 2 — 원반 줄 간격
+    summons:(tier === 2 ? [0.8, 0.55, 0.3] : []),   // 최종 보스 — 부하를 부르는 체력 구간
+    summonIdx:0, mode:'fight',
     burstLeft:0, burstTimer:0, burstGap:0, burstKind:'', burstAng:0
   };
   enemies.push(boss);
+}
+
+/* 드리프터 — 공격은 하지 않고 화면을 가로질러 흘러가기만 하는 원반. 세 기가 한 줄로 온다.
+   보스를 노린 총알을 가로막고, 몸으로 부딪혀 온다. */
+function spawnDrifterLine(b, squad) {
+  const dir  = Math.random() < .5 ? 1 : -1;
+  const y    = 210 + Math.random() * 200;
+  const c    = Math.random() < .5 ? 'red' : 'blue';
+  const hard = (b.tier === 2);
+  for (let i = 0; i < 3; i++) {
+    enemies.push({
+      type:'drifter', color:c, hard:hard,
+      x:(dir > 0 ? -24 - i * 56 : W + 24 + i * 56), y:y, baseY:y,
+      w:34, h:16, hp:(hard ? 3 : 2), t:i * 300, hit:0,
+      vx:dir * (hard ? 2.4 : 2.0),
+      squadOf:(squad ? b : undefined)
+    });
+  }
 }
 
 /* 최종 보스 호위기 — 전부 격추해야 무적 방벽이 풀린다 */
@@ -565,12 +596,13 @@ function damageEnemy(e, dmg, idx) {
   e.hit = 1;
   if (e.hp <= 0) {
     burst(e.x, e.y, e.color, e.type === 'boss' ? 60 : 16);
-    game.score += (e.type === 'boss' ? (e.tier === 1 ? 20000 : 5000)
+    game.score += (e.type === 'boss' ? (e.tier === 2 ? 40000 : e.tier === 1 ? 20000 : 5000)
                  : e.type === 'guard'    ? 400
                  : e.type === 'grunt'    ? 100
                  : e.type === 'shard'    ? 60
                  : e.type === 'splitter' ? 150
-                 : e.type === 'diver'    ? 200 : 180) * (e.hard ? 2 : 1);
+                 : e.type === 'diver'    ? 200
+                 : e.type === 'drifter'  ? 120 : 180) * (e.hard ? 2 : 1);
     game.shake = Math.max(game.shake, e.type === 'boss' ? 26 : 5);
     if (e.type === 'boss') { boss = null; game.flash = 1; game.flashColor = COLOR[e.color].main; }
     if (idx === undefined) idx = enemies.indexOf(e);
@@ -726,6 +758,18 @@ function update(dt, k) {   // dt: ms, k: 60fps 기준 시간 배율
       continue;
     }
 
+    if (e.type === 'drifter') {
+      // 공격하지 않고 가로질러 흘러가기만 한다
+      e.x += e.vx * k;
+      e.y = e.baseY + Math.sin(e.t / 380) * 22;
+      if ((e.vx > 0 && e.x - e.w > W + 20) || (e.vx < 0 && e.x + e.w < -20)) { enemies.splice(i, 1); continue; }
+      if (hitAABB(e, player)) {
+        hurtPlayer();
+        if (e.color !== player.color) damageEnemy(e, 1, i);
+      }
+      continue;
+    }
+
     if (e.type === 'diver') {
       updateDiver(e, dt, k);
       if (e.y - e.h > H + 30 || e.y + e.h < -40 || e.x < -40 || e.x > W + 40) { enemies.splice(i, 1); continue; }
@@ -775,7 +819,7 @@ function update(dt, k) {   // dt: ms, k: 60fps 기준 시간 배율
       e.fireTimer -= dt;
       if (e.fireTimer <= 0) {
         e.fireTimer = (e.hard ? 950 : 1500) + Math.random() * (e.hard ? 450 : 700);
-        if (e.hard && game.wave >= 9) {
+        if (e.hard && game.wave >= 10) {
           for (let s = -1; s <= 1; s++) aimShot(e, 4.4, s * 0.22);   // 강화형은 3방향
         } else {
           aimShot(e, e.hard ? 4.4 : 3.9);
@@ -886,43 +930,72 @@ function updateGuard(g, dt, k) {
   }
 }
 
+/* 탄막 세기 — 최종 보스는 처음부터 보스 2 의 2페이즈 수준에서 시작한다 */
+function bossLevel(b) {
+  return b.tier === 2 ? b.phase + 1 : b.phase;
+}
+
 function updateBoss(b, dt, k) {
-  const t2 = (b.tier === 1);
+  const tier = b.tier;
 
   if (b.entering) {
     b.y += 1.5 * k;
-    const dest = t2 ? 132 : 140;
-    if (b.y >= dest) { b.y = dest; b.entering = false; }
+    if (b.y >= b.homeY) { b.y = b.homeY; b.entering = false; }
+    return;
+  }
+
+  /* ---- 최종 보스: 부하를 부른 동안은 따로 움직인다 ---- */
+  if (tier === 2 && b.mode === 'summon') {
+    updateSummon(b, dt, k);
+    if (hitAABB(b, player)) hurtPlayer();
     return;
   }
 
   /* ---- 이동 ---- */
-  if (!t2) {
+  if (tier === 0) {
     b.x = W/2 + Math.sin(b.t / 1400) * (W/2 - b.w/2 - 14);
     b.y = 140 + Math.sin(b.t / 900) * 14;
-  } else {
+  } else if (tier === 1) {
     const sp = 1300 - b.phase * 320;                       // 페이즈가 오를수록 빨라짐
     b.x = W/2 + Math.sin(b.t / sp) * (W/2 - b.w/2 - 10);
     b.y = (132 + b.phase * 20) + Math.sin(b.t / (sp * 0.6)) * (18 + b.phase * 12);
+  } else {
+    // 목표 지점을 따라 미끄러지듯 움직인다 — 부하를 부르고 돌아올 때도 튀지 않는다
+    const sp = 1050 - b.phase * 140;
+    const tx = W/2 + Math.sin(b.t / sp) * (W/2 - b.w/2 - 8);
+    const ty = (b.homeY + b.phase * 14) + Math.sin(b.t / (sp * 0.55)) * (22 + b.phase * 10);
+    const f  = Math.min(1, 0.09 * k);
+    b.x += (tx - b.x) * f;
+    b.y += (ty - b.y) * f;
   }
 
   // 다음 공격 후 색이 바뀐다는 예고
   b.swapWarn = (b.shotsLeft <= 1) ? 1 : 0;
 
-  /* ---- 무적 방벽 / 호위기 (최종 보스) ---- */
-  if (t2 && !b.shield && b.gates.length && b.hp / b.maxHp <= b.gates[0]) {
-    b.gates.shift();
-    b.phase++;
-    b.shield = true;
-    spawnGuards(b, b.phase === 1 ? 4 : 6);
-    game.flash = 1; game.flashColor = '#7cf3ff';
-    game.shake = 20;
+  /* ---- 보스 2: 무적 방벽 / 호위기 + 가로지르는 원반 ---- */
+  if (tier === 1) {
+    if (!b.shield && b.gates.length && b.hp / b.maxHp <= b.gates[0]) {
+      b.gates.shift();
+      b.phase++;
+      b.shield = true;
+      spawnGuards(b, b.phase === 1 ? 4 : 6);
+      game.flash = 1; game.flashColor = '#7cf3ff';
+      game.shake = 20;
+    }
+    if (b.shield && !enemies.some(e => e.guardOf === b)) {
+      b.shield = false;
+      game.flash = .8; game.flashColor = '#ffffff';
+      game.shake = 16;
+      burst(b.x, b.y, '#7cf3ff', 36);
+    }
+    b.driftTimer -= dt;
+    if (b.driftTimer <= 0) { spawnDrifterLine(b, false); b.driftTimer = 5600 - b.phase * 1000; }
   }
-  if (b.shield && !enemies.some(e => e.guardOf === b)) {
-    b.shield = false;
-    game.flash = .8; game.flashColor = '#ffffff';
-    game.shake = 16;
-    burst(b.x, b.y, '#7cf3ff', 36);
+
+  /* ---- 최종 보스: 체력이 구간 아래로 떨어지면 부하를 부른다 ---- */
+  if (tier === 2 && b.summons.length && b.hp / b.maxHp <= b.summons[0]) {
+    startSummon(b);
+    return;
   }
 
   /* ---- 사격 ---- */
@@ -938,7 +1011,7 @@ function updateBoss(b, dt, k) {
         // ★ 1~3회 공격 후 변신 (횟수는 매번 랜덤)
         b.color = other(b.color);
         b.shotsLeft = 1 + Math.floor(Math.random() * 3);
-        burst(b.x, b.y, b.color, t2 ? 30 : 22);
+        burst(b.x, b.y, b.color, tier ? 30 : 22);
         game.borderPulse = Math.max(game.borderPulse, .3);
       }
     }
@@ -947,9 +1020,84 @@ function updateBoss(b, dt, k) {
   if (hitAABB(b, player)) hurtPlayer();
 }
 
+/* 최종 보스가 부르는 부하 — 부를 때마다 조합이 바뀌고 모두 강화형이다 */
+const SQUADS = [
+  [['grunt', 4], ['shooter', 2], ['splitter', 1]],
+  [['switcher', 3], ['diver', 2], ['drifter', 1]],
+  [['shooter', 2], ['splitter', 2], ['diver', 2], ['switcher', 2], ['drifter', 1]]
+];
+
+/* 부하를 부르는 동안 최종 보스는 위로 물러나 무적이 되고, 약한 조준탄만 쏜다.
+   부하를 모두 잡거나 16초가 지나면 돌아오고, 돌아올 때마다 탄막이 한 단계 거세진다. */
+function startSummon(b) {
+  const plan = SQUADS[Math.min(b.summonIdx, SQUADS.length - 1)];
+  b.summons.shift();
+  b.summonIdx++;
+  b.mode = 'summon';
+  b.shield = true;
+  b.burstLeft = 0;
+  b.summonTimer = 16000;
+  b.weakTimer = 1200;
+  b.squadClock = 0;
+  b.squadQueue = [];
+  let t = 700;
+  for (const [type, n] of plan) {
+    for (let i = 0; i < n; i++) {
+      b.squadQueue.push({ t:t, type:type, color:(Math.random() < .5 ? 'red' : 'blue'), x:60 + Math.random() * (W - 120) });
+      t += (type === 'drifter' ? 900 : 380);
+    }
+  }
+  game.flash = 1; game.flashColor = '#7cf3ff';
+  game.shake = 20;
+  burst(b.x, b.y, '#7cf3ff', 40);
+}
+
+function updateSummon(b, dt, k) {
+  // 위로 물러나 천천히 흔들린다 (체력 바를 가리지 않을 만큼만)
+  const tx = W/2 + Math.sin(b.t / 2000) * 70, ty = 112;
+  const f  = Math.min(1, 0.05 * k);
+  b.x += (tx - b.x) * f;
+  b.y += (ty - b.y) * f;
+  b.swapWarn = 0;
+
+  // 부하를 차례로 내보낸다
+  b.squadClock += dt;
+  while (b.squadQueue.length && b.squadQueue[0].t <= b.squadClock) {
+    const s = b.squadQueue.shift();
+    if (s.type === 'drifter') { spawnDrifterLine(b, true); continue; }
+    spawnEnemy({ type:s.type, color:s.color, x:s.x, hard:true });
+    enemies[enemies.length - 1].squadOf = b;
+  }
+
+  // 부하를 상대하는 동안은 가볍게만 견제한다
+  b.weakTimer -= dt;
+  if (b.weakTimer <= 0) { b.weakTimer = 1700; aimShot(b, 3.0); }
+
+  // 부하를 모두 잡았거나 시간이 다 되면 돌아온다
+  b.summonTimer -= dt;
+  const left = enemies.some(e => e.squadOf === b);
+  if ((!b.squadQueue.length && !left) || b.summonTimer <= 0) {
+    b.squadQueue = [];
+    b.mode = 'fight';
+    b.shield = false;
+    b.phase++;
+    b.fireTimer = 900;
+    game.flash = .8; game.flashColor = '#ffffff';
+    game.shake = 16;
+    burst(b.x, b.y, '#7cf3ff', 36);
+  }
+}
+
+/* 부하 수 — 아직 나오지 않은 것까지 센다 (원반 한 줄은 세 기) */
+function squadLeft(b) {
+  const out = enemies.reduce((n, e) => n + (e.squadOf === b ? 1 : 0), 0);
+  const queued = (b.squadQueue || []).reduce((n, q) => n + (q.type === 'drifter' ? 3 : 1), 0);
+  return out + queued;
+}
+
 function fireBossPattern(b) {
-  /* ---------- 1차 보스 ---------- */
-  if (b.tier !== 1) {
+  /* ---------- 보스 1 ---------- */
+  if (b.tier === 0) {
     if (b.pattern === 0) {
       for (let i = -2; i <= 2; i++) aimShot(b, 3.75, i * 0.18);
     } else {
@@ -964,22 +1112,24 @@ function fireBossPattern(b) {
     return;
   }
 
-  /* ---------- 최종 보스 ---------- */
-  const pool = b.phase === 0 ? ['spread','ring','rain']
-             : b.phase === 1 ? ['spread','ring','rain','spiral']
-             :                 ['spread','ring','rain','spiral','wall'];
+  /* ---------- 보스 2 · 최종 보스 — 단계(lvl)가 오를수록 종류가 늘고 빨라진다 ---------- */
+  const lvl  = bossLevel(b);
+  const pool = lvl === 0 ? ['spread','ring','rain']
+             : lvl === 1 ? ['spread','ring','rain','spiral']
+             : lvl === 2 ? ['spread','ring','rain','spiral','wall']
+             :             ['spread','ring','rain','spiral','wall','storm'];
   let kind = pool[Math.floor(Math.random() * pool.length)];
   if (kind === b.lastKind) kind = pool[(pool.indexOf(kind) + 1) % pool.length];
   b.lastKind = kind;
 
-  const fast = 1 + b.phase * 0.14;
+  const fast = 1 + lvl * 0.14;
 
   if (kind === 'spread') {                       // 유도 확산탄
-    const n = 5 + b.phase * 2;
+    const n = 5 + lvl * 2;
     for (let i = 0; i < n; i++) aimShot(b, 3.9 * fast, (i - (n-1)/2) * 0.16);
 
   } else if (kind === 'ring') {                  // ★ 양색 원형 탄막 — 절반은 반드시 피해야 한다
-    const n = 14 + b.phase * 4;
+    const n = 14 + lvl * 4;
     for (let i = 0; i < n; i++) {
       const a = i / n * Math.PI * 2 + b.t / 900;
       ebullets.push({ x:b.x, y:b.y, w:9, h:9,
@@ -988,22 +1138,32 @@ function fireBossPattern(b) {
     }
 
   } else if (kind === 'rain') {                  // 화면 위에서 쏟아지는 양색 비
-    b.burstKind = 'rain'; b.burstLeft = 8 + b.phase * 3; b.burstGap = 110; b.burstTimer = 0;
+    b.burstKind = 'rain'; b.burstLeft = 8 + lvl * 3; b.burstGap = 110; b.burstTimer = 0;
 
   } else if (kind === 'spiral') {                // 회전 나선탄
-    b.burstKind = 'spiral'; b.burstLeft = 16 + b.phase * 6; b.burstGap = 70; b.burstTimer = 0;
+    b.burstKind = 'spiral'; b.burstLeft = 16 + lvl * 6; b.burstGap = 70; b.burstTimer = 0;
     b.burstAng = Math.random() * 6.283;
 
-  } else {                                       // 색이 다른 2겹 탄막 벽 (틈으로 빠져나가야 함)
+  } else if (kind === 'wall') {                  // 색이 다른 2겹 탄막 벽 (틈으로 빠져나가야 함)
     b.burstKind = 'wall'; b.burstLeft = 2; b.burstGap = 560; b.burstTimer = 0;
     b.burstAng = 60 + Math.random() * (W - 120);
+
+  } else {                                       // 폭풍 — 양색 원형 탄막과 유도 확산을 한꺼번에
+    const n = 12 + lvl * 2;
+    for (let i = 0; i < n; i++) {
+      const a = i / n * Math.PI * 2 - b.t / 700;
+      ebullets.push({ x:b.x, y:b.y, w:9, h:9,
+        vx:Math.cos(a) * 2.8 * fast, vy:Math.sin(a) * 2.8 * fast,
+        color:(i % 2 ? 'red' : 'blue'), absorbed:false });
+    }
+    for (let i = -2; i <= 2; i++) aimShot(b, 4.2 * fast, i * 0.13);
   }
 
-  b.fireTimer = b.burstLeft > 0 ? 420 : (1150 - b.phase * 180);
+  b.fireTimer = b.burstLeft > 0 ? 420 : Math.max(480, 1150 - lvl * 180);
 }
 
 function burstStep(b) {
-  const fast = 1 + b.phase * 0.14;
+  const fast = 1 + bossLevel(b) * 0.14;
 
   if (b.burstKind === 'rain') {
     const x = 30 + Math.random() * (W - 60);
@@ -1258,6 +1418,15 @@ function drawEnemy(e) {
     ctx.beginPath();
     ctx.moveTo(0, r + 2); ctx.lineTo(r, -r); ctx.lineTo(0, -r * 0.3); ctx.lineTo(-r, -r);
     ctx.closePath(); ctx.fill(); ctx.stroke();
+  } else if (e.type === 'drifter') {
+    // 납작한 원반 — 쏘지 않고 가로질러 흘러가기만 한다
+    ctx.beginPath(); ctx.ellipse(0, 2, e.w/2, e.h/2, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = c.dark;
+    ctx.beginPath(); ctx.ellipse(0, -1, e.w/5, e.h/2.4, 0, Math.PI, 0); ctx.fill();   // 위쪽 돔
+    ctx.fillStyle = '#ffffff'; ctx.globalAlpha = .85;                                 // 진행 방향 불빛
+    ctx.fillRect(Math.sign(e.vx) * e.w * 0.32 - 2, 1, 4, 3);
+    ctx.globalAlpha = 1;
   } else { // switcher
     const r = e.w/2;
     ctx.beginPath();
@@ -1276,17 +1445,17 @@ function drawEnemy(e) {
 }
 
 function drawBoss(b) {
-  const c  = COLOR[b.color];
-  const t2 = (b.tier === 1);
+  const c    = COLOR[b.color];
+  const tier = b.tier;
   ctx.save();
   ctx.translate(b.x, b.y);
   const warn = b.swapWarn && Math.floor(b.t / 90) % 2 === 0;
-  ctx.shadowBlur = t2 ? 34 : 26; ctx.shadowColor = c.main;
+  ctx.shadowBlur = tier ? 34 : 26; ctx.shadowColor = c.main;
   ctx.fillStyle = b.hit > 0 ? '#ffffff' : (warn ? COLOR[other(b.color)].dark : c.main);
   ctx.strokeStyle = warn ? COLOR[other(b.color)].main : c.soft;
   ctx.lineWidth = 3;
 
-  if (!t2) {
+  if (tier === 0) {
     ctx.beginPath();
     ctx.moveTo(-66, -20); ctx.lineTo(-40, -37); ctx.lineTo(40, -37);
     ctx.lineTo(66, -20);  ctx.lineTo(44, 30);   ctx.lineTo(16, 37);
@@ -1300,7 +1469,7 @@ function drawBoss(b) {
     ctx.fillRect(-46, 16, 14, 8);
     ctx.fillRect(32, 16, 14, 8);
     ctx.globalAlpha = 1;
-  } else {
+  } else if (tier === 1) {
     ctx.beginPath();
     ctx.moveTo(-75, -12); ctx.lineTo(-54, -42); ctx.lineTo(-20, -30);
     ctx.lineTo(0, -48);   ctx.lineTo(20, -30);  ctx.lineTo(54, -42);
@@ -1314,6 +1483,29 @@ function drawBoss(b) {
     ctx.beginPath(); ctx.arc(0, -1, 8 + Math.sin(b.t/220) * 2, 0, Math.PI*2); ctx.fill();
     ctx.fillRect(-58, 16, 16, 9);
     ctx.fillRect(42, 16, 16, 9);
+    ctx.globalAlpha = 1;
+  } else {
+    // 최종 보스 — 넓은 날개와, 빨강·파랑이 반씩 도는 코어
+    ctx.beginPath();
+    ctx.moveTo(-84, -4);  ctx.lineTo(-68, -40); ctx.lineTo(-36, -30);
+    ctx.lineTo(-18, -52); ctx.lineTo(0, -40);   ctx.lineTo(18, -52);
+    ctx.lineTo(36, -30);  ctx.lineTo(68, -40);  ctx.lineTo(84, -4);
+    ctx.lineTo(62, 32);   ctx.lineTo(30, 47);   ctx.lineTo(0, 38);
+    ctx.lineTo(-30, 47);  ctx.lineTo(-62, 32);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = c.dark;
+    ctx.fillRect(-38, -17, 76, 30);
+    const r = 13 + Math.sin(b.t / 220) * 2, spin = b.t / 900;
+    ctx.fillStyle = COLOR.red.main;
+    ctx.beginPath(); ctx.moveTo(0, -2); ctx.arc(0, -2, r, spin, spin + Math.PI); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = COLOR.blue.main;
+    ctx.beginPath(); ctx.moveTo(0, -2); ctx.arc(0, -2, r, spin + Math.PI, spin + Math.PI * 2); ctx.closePath(); ctx.fill();
+    ctx.globalAlpha = .7; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(0, -2, r + 4, 0, Math.PI * 2); ctx.stroke();
+    ctx.globalAlpha = .9; ctx.fillStyle = '#ffffff';
+    ctx.fillRect(-66, 14, 18, 9);
+    ctx.fillRect(48, 14, 18, 9);
     ctx.globalAlpha = 1;
   }
 
@@ -1336,32 +1528,38 @@ function drawBoss(b) {
 
   // 보스 체력 바
   ctx.save();
-  const bw = t2 ? 360 : 300, bx = (W - bw)/2, by = PLAY_TOP + 12;
+  const bw = [300, 360, 400][tier], bh = tier ? 12 : 10;
+  const bx = (W - bw)/2, by = PLAY_TOP + 12;
   ctx.fillStyle = 'rgba(255,255,255,.12)';
-  ctx.fillRect(bx, by, bw, t2 ? 12 : 10);
+  ctx.fillRect(bx, by, bw, bh);
   ctx.fillStyle = b.shield ? '#7cf3ff' : c.main;
   ctx.shadowBlur = 12; ctx.shadowColor = ctx.fillStyle;
-  ctx.fillRect(bx, by, bw * Math.max(0, b.hp / b.maxHp), t2 ? 12 : 10);
+  ctx.fillRect(bx, by, bw * Math.max(0, b.hp / b.maxHp), bh);
   ctx.shadowBlur = 0;
   // 페이즈 구분선
-  if (t2) {
-    ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 1;
-    [0.66, 0.33].forEach(g => {
-      ctx.beginPath(); ctx.moveTo(bx + bw*g, by); ctx.lineTo(bx + bw*g, by + 12); ctx.stroke();
-    });
-  }
+  const marks = tier === 1 ? [0.66, 0.33] : tier === 2 ? [0.8, 0.55, 0.3] : [];
+  ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 1;
+  marks.forEach(g => {
+    ctx.beginPath(); ctx.moveTo(bx + bw*g, by); ctx.lineTo(bx + bw*g, by + bh); ctx.stroke();
+  });
   ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 1;
-  ctx.strokeRect(bx, by, bw, t2 ? 12 : 10);
+  ctx.strokeRect(bx, by, bw, bh);
 
   ctx.textAlign = 'center';
   ctx.font = 'bold 11px system-ui,sans-serif';
+  // 보스 몸체 위에 겹쳐도 읽히게 어두운 테두리를 먼저 두른다
+  ctx.strokeStyle = 'rgba(5,6,15,.9)'; ctx.lineWidth = 3; ctx.lineJoin = 'round';
+  const label = (txt) => { ctx.strokeText(txt, W/2, by - 4); ctx.fillText(txt, W/2, by - 4); };
   if (b.shield) {
-    const left = enemies.reduce((n, e) => n + (e.guardOf === b ? 1 : 0), 0);
     ctx.fillStyle = '#7cf3ff';
-    ctx.fillText('무적 — 호위기 ' + left + '기 남음', W/2, by - 4);
+    label(tier === 2
+      ? '무적 — 부하 ' + squadLeft(b) + '기 남음'
+      : '무적 — 호위기 ' + enemies.reduce((n, e) => n + (e.guardOf === b ? 1 : 0), 0) + '기 남음');
   } else {
     ctx.fillStyle = '#cfd8ff';
-    ctx.fillText(t2 ? ('F I N A L   B O S S   ·   PHASE ' + (b.phase + 1)) : 'B O S S', W/2, by - 4);
+    label(tier === 2 ? ('F I N A L   B O S S   ·   PHASE ' + (b.phase + 1))
+        : tier === 1 ? ('B O S S   2   ·   PHASE ' + (b.phase + 1))
+        : 'B O S S   1');
   }
   ctx.restore();
 }
