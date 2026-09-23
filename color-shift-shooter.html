@@ -275,8 +275,8 @@ const WAVE_INFO = [
   { title:'WAVE 4', sub:'스스로 색을 바꾸는 적' },
   { title:'BOSS 1', sub:'1~3회 공격마다 색을 바꾼다' },
   /* 2부 · 새로운 적 */
-  { title:'WAVE 6', sub:'부서지면 반대 색 둘로 갈라지는 적' },
-  { title:'WAVE 7', sub:'노려보다가 돌진하는 적' },
+  { title:'WAVE 6', sub:'갈라지는 적 등장 — 1부의 적들과 함께' },
+  { title:'WAVE 7', sub:'돌진하는 적 등장 — 앞서 나온 적들과 함께' },
   { title:'BOSS 2', sub:'무적 방벽 · 호위기 · 가로지르는 원반' },
   /* 3부 · 강화 */
   { title:'WAVE 9', sub:'강화 편대 — 체력·속도·탄속 상승' },
@@ -288,6 +288,15 @@ const WAVE_INFO = [
 function buildSpawns(w) {
   const list = [];
   const rx = () => 50 + Math.random() * (W - 100);
+  const rc = () => (Math.random() < .5 ? 'red' : 'blue');
+
+  /* 2부 — 새 적이 맨 먼저 나오고, 곧바로 1부에서 본 적들과 섞여 나온다.
+     다섯 기마다 그런트 하나가 같이 나오고, 뒤로 갈수록 간격이 촘촘해진다. */
+  const mixed = seq => seq.forEach((type, i) => {
+    list.push({ t:t, type:type, color:rc(), x:rx() });
+    if (i % 5 === 4) list.push({ t:t + 150, type:'grunt', color:rc(), x:rx() });
+    t += Math.max(330, 480 - i * 7);
+  });
   let t = 600;
 
   if (w === 1) {
@@ -316,27 +325,17 @@ function buildSpawns(w) {
   } else if (w === 5) {
     list.push({ t:800, type:'boss', color:'red', x:W/2 });
   } else if (w === 6) {
-    // 스플리터 등장 — 처음엔 한 기씩 내보내 갈라지는 걸 보여주고, 그다음 그런트와 섞는다
-    for (let i = 0; i < 4; i++) {
-      list.push({ t:t, type:'splitter', color:(i % 2 ? 'blue' : 'red'), x:rx() });
-      t += 1300;
-    }
-    for (let i = 0; i < 12; i++) {
-      const c = Math.random() < .5 ? 'red' : 'blue';
-      list.push({ t:t, type:(i % 3 === 2 ? 'splitter' : 'grunt'), color:c, x:rx() });
-      t += 520;
-    }
+    // 스플리터 등장 + 그런트 · 슈터 · 스위처
+    mixed(['splitter','grunt','shooter','switcher','splitter','shooter',
+           'grunt','shooter','splitter','switcher','grunt','shooter',
+           'splitter','grunt','switcher','shooter','splitter','grunt',
+           'shooter','splitter','switcher','grunt']);
   } else if (w === 7) {
-    // 다이버 등장 — 한 기씩 돌진을 보여준 뒤 그런트 사이에 섞는다
-    for (let i = 0; i < 4; i++) {
-      list.push({ t:t, type:'diver', color:(i % 2 ? 'red' : 'blue'), x:rx() });
-      t += 1500;
-    }
-    for (let i = 0; i < 12; i++) {
-      const c = Math.random() < .5 ? 'red' : 'blue';
-      list.push({ t:t, type:(i % 4 === 3 ? 'diver' : 'grunt'), color:c, x:rx() });
-      t += 500;
-    }
+    // 다이버 등장 + 그런트 · 슈터 · 스위처 · 스플리터
+    mixed(['diver','shooter','grunt','switcher','diver','shooter',
+           'splitter','grunt','diver','shooter','switcher','diver',
+           'shooter','splitter','grunt','diver','shooter','switcher',
+           'diver','splitter','shooter','grunt']);
   } else if (w === 8) {
     list.push({ t:900, type:'boss2', color:'red', x:W/2 });
   } else if (w === 9) {
